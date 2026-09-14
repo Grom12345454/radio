@@ -1,8 +1,10 @@
-import sys
-import os
 import tkinter as tk
 from ui.app_3d import RadioApp3D
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from visualizer import Visualizer
 
 def main():
     root = tk.Tk()
