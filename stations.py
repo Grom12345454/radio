@@ -35,15 +35,12 @@ STATIONS = {
 }
 
 def get_categories():
-    """Возвращает список названий категорий"""
     return list(STATIONS.keys())
 
 def get_stations_by_category(category_name):
-    """Возвращает словарь станций для конкретной категории"""
     return STATIONS.get(category_name, {})
 
 def search_stations(query):
-    """Поиск по всем станциям (возвращает плоский список имен)"""
     query_lower = query.lower()
     results = []
     for cat_name, stations in STATIONS.items():

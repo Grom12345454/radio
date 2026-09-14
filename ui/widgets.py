@@ -2,7 +2,6 @@ import tkinter as tk
 
 
 class StationCard3D(tk.Frame):
-    """Современная 3D карточка радиостанции с эффектом стекла"""
     
     def __init__(self, parent, station_name, station_url="", genre="", 
                  on_click_callback=None, is_playing=False, now_playing="", **kwargs):
@@ -16,7 +15,6 @@ class StationCard3D(tk.Frame):
         self.now_playing = now_playing
         self.on_click_callback = on_click_callback
         
-        # Основной контейнер с закругленными углами (имитация)
         self.card_frame = tk.Frame(self, bg="#1f2937", relief="flat")
         self.card_frame.pack(fill="both", expand=True, padx=2, pady=2)
         
@@ -64,7 +62,6 @@ class StationCard3D(tk.Frame):
             )
             self.genre_label.pack(anchor="w", pady=(2, 0))
         
-        # Индикатор воспроизведения
         self.play_indicator = tk.Canvas(
             top_frame,
             width=24,
@@ -269,29 +266,3 @@ class Button3D(tk.Button):
         rgb = self._hex_to_rgb(hex_color)
         rgb = tuple(min(255, int(c * (1 + percent/100))) for c in rgb)
         return self._rgb_to_hex(rgb)
-
-
-class VolumeSlider3D(tk.Scale):
-    """3D слайдер громкости"""
-    
-    def __init__(self, parent, command=None, **kwargs):
-        default_kwargs = {
-            'from_': 0,
-            'to': 100,
-            'orient': 'horizontal',
-            'showvalue': False,
-            'bg': '#1f2937',
-            'fg': '#f9fafb',
-            'troughcolor': '#374151',
-            'activebackground': '#3b82f6',
-            'highlightthickness': 0,
-            'borderwidth': 0,
-            'relief': 'flat',
-            'sliderrelief': 'flat',
-            'sliderlength': 20,
-            'width': 12,
-            'command': command
-        }
-        
-        default_kwargs.update(kwargs)
-        super().__init__(parent, **default_kwargs)
