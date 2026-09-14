@@ -62,6 +62,11 @@ class RadioApp:
         self.update_volume_icon(DEFAULT_VOLUME)
 
         # --------------------------------------------------------
+        # POPULATE STATIONS (ИСПРАВЛЕНИЕ: заполняем список при старте)
+        # --------------------------------------------------------
+        self.populate_stations()
+
+        # --------------------------------------------------------
         # UPDATE LOOP
         # --------------------------------------------------------
         self.update_loop()
@@ -189,6 +194,7 @@ class RadioApp:
         self.volume_icon = tk.Label(volume_box, text="", bg=PANEL_LIGHT, fg=TEXT, font=("Segoe UI Emoji", 12))
         self.volume_icon.pack(side="left", padx=(0, 6))
 
+        # ИСПРАВЛЕНИЕ: Стилизация ползунка под темную тему
         self.volume_scale = tk.Scale(
             volume_box, from_=0, to=100, orient="horizontal", length=140, showvalue=False,
             bg=PANEL_LIGHT, fg=TEXT, troughcolor="#303540", activebackground=ACCENT,
@@ -332,7 +338,7 @@ class RadioApp:
         try:
             states_map = {
                 "CONNECTING": ("● Подключение...", WARNING, "● CONNECTING", WARNING, "⏸ PAUSE"),
-                "PLAYING": ("● Сейчас играет", SUCCESS, "● LIVE", SUCCESS, " PAUSE"),
+                "PLAYING": ("● Сейчас играет", SUCCESS, "● LIVE", SUCCESS, "⏸ PAUSE"),
                 "PAUSED": ("● Пауза", TEXT_MUTED, "● PAUSED", TEXT_MUTED, "▶ RESUME"),
                 "STOPPED": ("● Остановлено", TEXT_MUTED, "● OFFLINE", TEXT_MUTED, "▶ PLAY"),
                 "ERROR": ("● Ошибка", ERROR, "● ERROR", ERROR, "▶ PLAY"),
@@ -393,7 +399,7 @@ class RadioApp:
     def update_volume_icon(self, value):
         try:
             value = int(value)
-            icons = {0: "🔇", 1: "", 40: "🔉", 75: "🔊"}
+            icons = {0: "🔇", 1: "", 40: "", 75: "🔊"}
             icon = "🔊"
             for threshold, i in sorted(icons.items()):
                 if value >= threshold and i:
@@ -403,7 +409,7 @@ class RadioApp:
             pass
 
     # ============================================================
-    # UPDATE LOOP (БЕЗ ВИЗУАЛИЗАТОРА)
+    # UPDATE LOOP
     # ============================================================
     def update_loop(self):
         if self.closing:
