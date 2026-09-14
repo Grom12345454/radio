@@ -1,29 +1,14 @@
 import tkinter as tk
 from tkinter import ttk
+
+# Импорты из корневой папки проекта
 from config import (
-    APP_NAME,
-    APP_VERSION,
-    WINDOW_WIDTH,
-    WINDOW_HEIGHT,
-    MIN_WIDTH,
-    MIN_HEIGHT,
-    DEFAULT_VOLUME,
-    UI_UPDATE_INTERVAL,
-    ACCENT,
-    ACCENT_HOVER,
-    BG,
-    PANEL,
-    PANEL_LIGHT,
-    PANEL_HOVER,
-    TEXT,
-    TEXT_MUTED,
-    SUCCESS,
-    WARNING,
-    ERROR,
+    APP_NAME, APP_VERSION, WINDOW_WIDTH, WINDOW_HEIGHT, MIN_WIDTH, MIN_HEIGHT,
+    DEFAULT_VOLUME, UI_UPDATE_INTERVAL, ACCENT, ACCENT_HOVER, BG, PANEL,
+    PANEL_LIGHT, PANEL_HOVER, TEXT, TEXT_MUTED, SUCCESS, WARNING, ERROR,
 )
 from stations import STATIONS, search_stations
 from player import RadioPlayer
-from visualizer import Visualizer
 
 
 class RadioApp:
@@ -47,7 +32,7 @@ class RadioApp:
         self.filtered_stations = list(STATIONS.keys())
         self.closing = False
         self.updating_volume = False
-        self.station_tiles = {}  # Словарь для хранения виджетов плиток
+        self.station_tiles = {}
 
         # --------------------------------------------------------
         # PLAYER
@@ -77,11 +62,6 @@ class RadioApp:
         self.update_volume_icon(DEFAULT_VOLUME)
 
         # --------------------------------------------------------
-        # VISUALIZER
-        # --------------------------------------------------------
-        self.visualizer = Visualizer(self.visualizer_canvas, ACCENT)
-
-        # --------------------------------------------------------
         # UPDATE LOOP
         # --------------------------------------------------------
         self.update_loop()
@@ -97,36 +77,16 @@ class RadioApp:
             pass
 
         style.configure(
-            "Modern.TButton",
-            background=ACCENT,
-            foreground="white",
-            borderwidth=0,
-            padding=(18, 10),
-            font=("Segoe UI", 10, "bold"),
+            "Modern.TButton", background=ACCENT, foreground="white",
+            borderwidth=0, padding=(18, 10), font=("Segoe UI", 10, "bold"),
         )
-        style.map(
-            "Modern.TButton",
-            background=[
-                ("active", ACCENT_HOVER),
-                ("pressed", ACCENT_HOVER),
-            ],
-        )
+        style.map("Modern.TButton", background=[("active", ACCENT_HOVER), ("pressed", ACCENT_HOVER)])
 
         style.configure(
-            "Secondary.TButton",
-            background=PANEL_LIGHT,
-            foreground=TEXT,
-            borderwidth=0,
-            padding=(15, 10),
-            font=("Segoe UI", 10),
+            "Secondary.TButton", background=PANEL_LIGHT, foreground=TEXT,
+            borderwidth=0, padding=(15, 10), font=("Segoe UI", 10),
         )
-        style.map(
-            "Secondary.TButton",
-            background=[
-                ("active", PANEL_HOVER),
-                ("pressed", PANEL_HOVER),
-            ],
-        )
+        style.map("Secondary.TButton", background=[("active", PANEL_HOVER), ("pressed", PANEL_HOVER)])
 
     # ============================================================
     # UI SETUP
@@ -135,12 +95,11 @@ class RadioApp:
         # HEADER
         header = tk.Frame(self.root, bg=BG)
         header.pack(fill="x", padx=28, pady=(22, 14))
-
+        
         tk.Label(header, text="", bg=BG, fg=TEXT, font=("Segoe UI Emoji", 30)).pack(side="left", padx=(0, 12))
-
+        
         title_box = tk.Frame(header, bg=BG)
         title_box.pack(side="left")
-
         tk.Label(title_box, text=APP_NAME, bg=BG, fg=TEXT, font=("Segoe UI", 22, "bold")).pack(anchor="w")
         tk.Label(title_box, text="Internet radio player", bg=BG, fg=TEXT_MUTED, font=("Segoe UI", 9)).pack(anchor="w")
 
@@ -148,7 +107,7 @@ class RadioApp:
         main = tk.Frame(self.root, bg=BG)
         main.pack(fill="both", expand=True, padx=28, pady=5)
 
-        # LEFT PANEL (STATIONS)
+        # LEFT PANEL (STATIONS GRID)
         left = tk.Frame(main, bg=PANEL, width=360)
         left.pack(side="left", fill="y", padx=(0, 12))
         left.pack_propagate(False)
@@ -163,19 +122,13 @@ class RadioApp:
 
         self.search_var = tk.StringVar()
         self.search_entry = tk.Entry(
-            search_box,
-            textvariable=self.search_var,
-            bg=PANEL_LIGHT,
-            fg=TEXT,
-            insertbackground=TEXT,
-            relief="flat",
-            borderwidth=0,
-            font=("Segoe UI", 10),
+            search_box, textvariable=self.search_var, bg=PANEL_LIGHT, fg=TEXT,
+            insertbackground=TEXT, relief="flat", borderwidth=0, font=("Segoe UI", 10),
         )
         self.search_entry.pack(fill="x", padx=10, pady=9)
         self.search_entry.bind("<KeyRelease>", self.on_search)
 
-        # STATION GRID (SCROLLABLE CANVAS)
+        # SCROLLABLE CANVAS FOR STATIONS
         list_frame = tk.Frame(left, bg=PANEL)
         list_frame.pack(fill="both", expand=True, padx=10, pady=(0, 12))
 
@@ -188,7 +141,7 @@ class RadioApp:
 
         self.station_grid_container = tk.Frame(self.station_canvas, bg=PANEL)
         self.station_canvas.create_window((0, 0), window=self.station_grid_container, anchor="nw")
-
+        
         self.station_grid_container.bind("<Configure>", lambda e: self.station_canvas.configure(scrollregion=self.station_canvas.bbox("all")))
         self.station_canvas.bind_all("<MouseWheel>", lambda e: self.station_canvas.yview_scroll(int(-1 * (e.delta / 120)), "units"))
 
@@ -217,15 +170,6 @@ class RadioApp:
         self.track = tk.Label(info, text="", bg=PANEL, fg=TEXT_MUTED, font=("Segoe UI", 9))
         self.track.pack(anchor="w", pady=(12, 0))
 
-        # VISUALIZER
-        visual = tk.Frame(right, bg=PANEL)
-        visual.pack(fill="both", expand=True, pady=(0, 12))
-
-        tk.Label(visual, text="AUDIO", bg=PANEL, fg=TEXT_MUTED, font=("Segoe UI", 8, "bold")).pack(anchor="w", padx=18, pady=(12, 3))
-
-        self.visualizer_canvas = tk.Canvas(visual, bg=PANEL, highlightthickness=0)
-        self.visualizer_canvas.pack(fill="both", expand=True, padx=15, pady=(0, 15))
-
         # CONTROLS
         controls = tk.Frame(right, bg=PANEL_LIGHT)
         controls.pack(fill="x")
@@ -242,7 +186,7 @@ class RadioApp:
         volume_box = tk.Frame(controls, bg=PANEL_LIGHT)
         volume_box.pack(side="right", padx=18)
 
-        self.volume_icon = tk.Label(volume_box, text="🔊", bg=PANEL_LIGHT, fg=TEXT, font=("Segoe UI Emoji", 12))
+        self.volume_icon = tk.Label(volume_box, text="", bg=PANEL_LIGHT, fg=TEXT, font=("Segoe UI Emoji", 12))
         self.volume_icon.pack(side="left", padx=(0, 6))
 
         self.volume_scale = tk.Scale(
@@ -297,18 +241,16 @@ class RadioApp:
     def _create_station_tile(self, name):
         frame = tk.Frame(self.station_grid_container, bg=PANEL_LIGHT, cursor="hand2")
         
-        icon = tk.Label(frame, text="", bg=PANEL_LIGHT, fg=ACCENT, font=("Segoe UI Emoji", 16))
+        icon = tk.Label(frame, text="📻", bg=PANEL_LIGHT, fg=ACCENT, font=("Segoe UI Emoji", 16))
         icon.pack(side="left", padx=(10, 8), pady=10)
         
         label = tk.Label(frame, text=name, bg=PANEL_LIGHT, fg=TEXT, font=("Segoe UI", 9, "bold"), anchor="w", wraplength=130)
         label.pack(side="left", fill="x", expand=True, padx=(0, 10), pady=10)
         
-        # Hover effects
         frame.bind("<Enter>", lambda e, f=frame: f.configure(bg=PANEL_HOVER))
         frame.bind("<Leave>", lambda e, f=frame, n=name: self._reset_tile(f, n))
         frame.bind("<Button-1>", lambda e, n=name: self._select_station(n))
         
-        # Store reference
         self.station_tiles[name] = {"frame": frame, "icon": icon, "label": label}
         return frame
 
@@ -330,7 +272,6 @@ class RadioApp:
         self.footer_status.config(text="● CONNECTING", fg=WARNING)
         self.play_button.config(text="⏸ PAUSE")
         
-        # Update grid visuals
         for s_name, widgets in self.station_tiles.items():
             is_active = (s_name == name)
             bg_color = ACCENT if is_active else PANEL_LIGHT
@@ -347,21 +288,13 @@ class RadioApp:
             self.player_error(str(exc))
 
     # ============================================================
-    # SEARCH & PLAY
+    # SEARCH & PLAYBACK
     # ============================================================
     def on_search(self, event=None):
         query = self.search_var.get()
         self.filtered_stations = search_stations(query)
         self.populate_stations()
 
-    def play_selected(self):
-        # Для обратной совместимости с хоткеями, если нужно
-        if self.current_station:
-            self._select_station(self.current_station)
-
-    # ============================================================
-    # PLAYBACK CONTROLS
-    # ============================================================
     def toggle_play(self):
         if not self.current_station:
             if self.filtered_stations:
@@ -397,30 +330,19 @@ class RadioApp:
         if self.closing:
             return
         try:
-            if state == "CONNECTING":
-                self.set_status("● Подключение...", WARNING)
-                self.footer_status.config(text="● CONNECTING", fg=WARNING)
-                self.play_button.config(text="⏸ PAUSE")
-            elif state == "PLAYING":
-                self.set_status("● Сейчас играет", SUCCESS)
-                self.footer_status.config(text="● LIVE", fg=SUCCESS)
-                self.play_button.config(text="⏸ PAUSE")
-            elif state == "PAUSED":
-                self.set_status("● Пауза", TEXT_MUTED)
-                self.footer_status.config(text="● PAUSED", fg=TEXT_MUTED)
-                self.play_button.config(text="▶ RESUME")
-            elif state == "STOPPED":
-                self.set_status("● Остановлено", TEXT_MUTED)
-                self.footer_status.config(text="● OFFLINE", fg=TEXT_MUTED)
-                self.play_button.config(text="▶ PLAY")
-            elif state == "ERROR":
-                self.set_status("● Ошибка", ERROR)
-                self.footer_status.config(text="● ERROR", fg=ERROR)
-                self.play_button.config(text="▶ PLAY")
-            elif state == "ENDED":
-                self.set_status("● Поток завершён", TEXT_MUTED)
-                self.footer_status.config(text="● OFFLINE", fg=TEXT_MUTED)
-                self.play_button.config(text="▶ PLAY")
+            states_map = {
+                "CONNECTING": ("● Подключение...", WARNING, "● CONNECTING", WARNING, "⏸ PAUSE"),
+                "PLAYING": ("● Сейчас играет", SUCCESS, "● LIVE", SUCCESS, " PAUSE"),
+                "PAUSED": ("● Пауза", TEXT_MUTED, "● PAUSED", TEXT_MUTED, "▶ RESUME"),
+                "STOPPED": ("● Остановлено", TEXT_MUTED, "● OFFLINE", TEXT_MUTED, "▶ PLAY"),
+                "ERROR": ("● Ошибка", ERROR, "● ERROR", ERROR, "▶ PLAY"),
+                "ENDED": ("● Поток завершён", TEXT_MUTED, "● OFFLINE", TEXT_MUTED, "▶ PLAY"),
+            }
+            if state in states_map:
+                status_txt, status_clr, footer_txt, footer_clr, btn_txt = states_map[state]
+                self.set_status(status_txt, status_clr)
+                self.footer_status.config(text=footer_txt, fg=footer_clr)
+                self.play_button.config(text=btn_txt)
         except tk.TclError:
             pass
 
@@ -471,19 +393,17 @@ class RadioApp:
     def update_volume_icon(self, value):
         try:
             value = int(value)
-            if value <= 0:
-                self.volume_icon.config(text="🔇")
-            elif value < 40:
-                self.volume_icon.config(text="")
-            elif value < 75:
-                self.volume_icon.config(text="🔉")
-            else:
-                self.volume_icon.config(text="🔊")
+            icons = {0: "🔇", 1: "", 40: "🔉", 75: "🔊"}
+            icon = "🔊"
+            for threshold, i in sorted(icons.items()):
+                if value >= threshold and i:
+                    icon = i
+            self.volume_icon.config(text=icon)
         except (ValueError, TypeError, tk.TclError):
             pass
 
     # ============================================================
-    # UPDATE LOOP
+    # UPDATE LOOP (БЕЗ ВИЗУАЛИЗАТОРА)
     # ============================================================
     def update_loop(self):
         if self.closing:
@@ -496,9 +416,7 @@ class RadioApp:
             title = self.player.get_title()
             if title:
                 self.track.config(text=f"♪ {title}")
-            
-            if hasattr(self, "visualizer"):
-                self.visualizer.draw(active=(state == "PLAYING"))
+                
         except tk.TclError:
             return
         except Exception:
