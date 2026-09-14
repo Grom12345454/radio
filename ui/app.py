@@ -1,6 +1,8 @@
 # ============================================================
 # ui/app.py
-# RadioStation 3D - Professional Player UI
+# RadioStation 3D
+# Professional Desktop Player
+# Radio + YouTube
 # ============================================================
 
 import os
@@ -10,10 +12,9 @@ import random
 import tkinter as tk
 from tkinter import ttk
 
-
-# ------------------------------------------------------------
-# Project root
-# ------------------------------------------------------------
+# ============================================================
+# PROJECT ROOT
+# ============================================================
 
 PROJECT_ROOT = os.path.dirname(
     os.path.dirname(
@@ -24,6 +25,9 @@ PROJECT_ROOT = os.path.dirname(
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
+# ============================================================
+# PROJECT
+# ============================================================
 
 from config import (
     APP_NAME,
@@ -47,20 +51,9 @@ from player import RadioPlayer
 
 
 class RadioApp:
-    """
-    Professional dark radio player UI.
-
-    Совместим с:
-        stations.py
-        config.py
-        player.py
-        main.py
-
-    Никаких дополнительных UI-библиотек не требуется.
-    """
 
     # ========================================================
-    # DESIGN SYSTEM
+    # COLORS
     # ========================================================
 
     BG = "#080B12"
@@ -73,14 +66,14 @@ class RadioApp:
     SURFACE_3 = "#1B2433"
 
     BORDER = "#202A3A"
-    BORDER_LIGHT = "#273246"
+    BORDER_LIGHT = "#2B374B"
 
     TEXT = "#F5F7FB"
     TEXT_SECONDARY = "#B6C0D0"
     TEXT_MUTED = "#6F7B8F"
 
     ACCENT = "#6D7CFF"
-    ACCENT_HOVER = "#8190FF"
+    ACCENT_HOVER = "#8290FF"
     ACCENT_DARK = "#3E4CA8"
 
     SUCCESS = "#31D17C"
@@ -121,54 +114,47 @@ class RadioApp:
             self.on_closing
         )
 
-        # ----------------------------------------------------
-        # Application state
-        # ----------------------------------------------------
+        # ====================================================
+        # STATE
+        # ====================================================
 
         self.current_station_name = None
         self.current_url = None
         self.current_category = None
+
+        self.current_view = "home"
 
         self.favorite_stations = set()
         self.history = []
 
         self.displayed_stations = {}
 
-        self.search_placeholder = "Search stations..."
-
-        self.search_after_id = None
-
-        self.ui_after_ids = []
-
-        self.updating_volume = False
-
         self.last_state = None
         self.last_title = None
 
-        self.current_view = "home"
+        self.search_after_id = None
+        self.update_after_id = None
+        self.wave_after_id = None
 
-        # ----------------------------------------------------
-        # Player
-        # ----------------------------------------------------
+        self.updating_volume = False
+
+        self.wave_phase = 0.0
+
+        # ====================================================
+        # PLAYER
+        # ====================================================
 
         self.player = RadioPlayer()
 
-        # Callback'и VLC могут приходить из другого потока.
-        # Поэтому НЕ меняем Tkinter напрямую.
-        if hasattr(
-            self.player,
-            "set_callbacks"
-        ):
+        self.player.set_callbacks(
+            on_state_changed=self._player_state_callback,
+            on_error=self._player_error_callback,
+            on_metadata_changed=self._player_metadata_callback,
+        )
 
-            self.player.set_callbacks(
-                on_state_changed=self._player_state_callback,
-                on_error=self._player_error_callback,
-                on_metadata_changed=self._player_metadata_callback,
-            )
-
-        # ----------------------------------------------------
-        # Build UI
-        # ----------------------------------------------------
+        # ====================================================
+        # UI
+        # ====================================================
 
         self.setup_ttk()
 
@@ -178,7 +164,11 @@ class RadioApp:
 
         self.initialize_volume()
 
+        self.render_home()
+
         self.update_loop()
+
+        self.animate_waveform()
 
     # ========================================================
     # TTK
@@ -211,13 +201,13 @@ class RadioApp:
         )
 
     # ========================================================
-    # MAIN INTERFACE
+    # MAIN UI
     # ========================================================
 
     def build_interface(self):
 
         # ====================================================
-        # TOP HEADER
+        # HEADER
         # ====================================================
 
         self.header = tk.Frame(
@@ -235,7 +225,7 @@ class RadioApp:
         self.header.pack_propagate(False)
 
         # ----------------------------------------------------
-        # Brand
+        # BRAND
         # ----------------------------------------------------
 
         brand = tk.Frame(
@@ -261,7 +251,6 @@ class RadioApp:
             pady=8,
         )
 
-        # logo ring
         logo.create_oval(
             4,
             4,
@@ -311,7 +300,7 @@ class RadioApp:
 
         tk.Label(
             brand_text,
-            text="INTERNET RADIO",
+            text="INTERNET RADIO • MUSIC PLAYER",
             bg=self.BG,
             fg=self.TEXT_MUTED,
             font=("Segoe UI", 7, "bold"),
@@ -320,7 +309,7 @@ class RadioApp:
         )
 
         # ----------------------------------------------------
-        # Search
+        # SEARCH
         # ----------------------------------------------------
 
         search_outer = tk.Frame(
@@ -363,7 +352,7 @@ class RadioApp:
             search,
             textvariable=self.search_var,
             bg=self.SURFACE,
-            fg=self.TEXT_MUTED,
+            fg=self.TEXT,
             insertbackground=self.TEXT,
             selectbackground=self.ACCENT_DARK,
             relief="flat",
@@ -375,13 +364,16 @@ class RadioApp:
             side="left",
             fill="both",
             expand=True,
-            padx=(0, 12),
-            pady=8,
+            padx=(0, 14),
         )
 
         self.search_entry.insert(
             0,
-            self.search_placeholder
+            "Search stations..."
+        )
+
+        self.search_entry.configure(
+            fg=self.TEXT_MUTED
         )
 
         self.search_entry.bind(
@@ -399,58 +391,16 @@ class RadioApp:
             self.on_search
         )
 
-        # ----------------------------------------------------
-        # Live indicator
-        # ----------------------------------------------------
-
-        self.live_indicator = tk.Frame(
-            self.header,
-            bg=self.SURFACE,
-        )
-
-        self.live_indicator.pack(
-            side="right",
-            padx=(12, 0),
-        )
-
-        self.live_dot = tk.Label(
-            self.live_indicator,
-            text="●",
-            bg=self.SURFACE,
-            fg=self.TEXT_MUTED,
-            font=("Segoe UI", 9),
-        )
-
-        self.live_dot.pack(
-            side="left",
-            padx=(10, 3),
-            pady=7,
-        )
-
-        self.live_text = tk.Label(
-            self.live_indicator,
-            text="OFFLINE",
-            bg=self.SURFACE,
-            fg=self.TEXT_MUTED,
-            font=("Segoe UI", 8, "bold"),
-        )
-
-        self.live_text.pack(
-            side="left",
-            padx=(0, 10),
-            pady=7,
-        )
-
         # ====================================================
         # BODY
         # ====================================================
 
-        self.body = tk.Frame(
+        body = tk.Frame(
             self.root,
             bg=self.BG,
         )
 
-        self.body.pack(
+        body.pack(
             fill="both",
             expand=True,
             padx=24,
@@ -462,15 +412,14 @@ class RadioApp:
         # ====================================================
 
         self.sidebar = tk.Frame(
-            self.body,
+            body,
             bg=self.SIDEBAR,
-            width=210,
+            width=220,
         )
 
         self.sidebar.pack(
             side="left",
             fill="y",
-            padx=(0, 14),
         )
 
         self.sidebar.pack_propagate(False)
@@ -478,62 +427,117 @@ class RadioApp:
         self.build_sidebar()
 
         # ====================================================
-        # MAIN
+        # CONTENT
         # ====================================================
 
-        self.main = tk.Frame(
-            self.body,
+        content = tk.Frame(
+            body,
             bg=self.BG,
         )
 
-        self.main.pack(
+        content.pack(
             side="left",
+            fill="both",
+            expand=True,
+            padx=(14, 0),
+        )
+
+        # ----------------------------------------------------
+        # NOW PLAYING
+        # ----------------------------------------------------
+
+        self.now_playing = tk.Frame(
+            content,
+            bg=self.SURFACE,
+            height=205,
+        )
+
+        self.now_playing.pack(
+            fill="x",
+        )
+
+        self.now_playing.pack_propagate(False)
+
+        self.build_now_playing()
+
+        # ----------------------------------------------------
+        # STATION SECTION
+        # ----------------------------------------------------
+
+        self.station_header = tk.Frame(
+            content,
+            bg=self.BG,
+            height=54,
+        )
+
+        self.station_header.pack(
+            fill="x",
+            pady=(12, 0),
+        )
+
+        self.station_header.pack_propagate(False)
+
+        self.section_title = tk.Label(
+            self.station_header,
+            text="Stations",
+            bg=self.BG,
+            fg=self.TEXT,
+            font=("Segoe UI", 16, "bold"),
+        )
+
+        self.section_title.pack(
+            side="left",
+            pady=8,
+        )
+
+        self.section_count = tk.Label(
+            self.station_header,
+            text="",
+            bg=self.BG,
+            fg=self.TEXT_MUTED,
+            font=("Segoe UI", 9),
+        )
+
+        self.section_count.pack(
+            side="left",
+            padx=12,
+        )
+
+        # ----------------------------------------------------
+        # SCROLL
+        # ----------------------------------------------------
+
+        station_outer = tk.Frame(
+            content,
+            bg=self.BG,
+        )
+
+        station_outer.pack(
             fill="both",
             expand=True,
         )
 
-        # ====================================================
-        # SCROLL AREA
-        # ====================================================
-
         self.canvas = tk.Canvas(
-            self.main,
+            station_outer,
             bg=self.BG,
             highlightthickness=0,
             bd=0,
         )
 
         self.scrollbar = ttk.Scrollbar(
-            self.main,
+            station_outer,
             orient="vertical",
             command=self.canvas.yview,
             style="Radio.Vertical.TScrollbar",
         )
 
-        self.scroll_content = tk.Frame(
-            self.canvas,
-            bg=self.BG,
-        )
-
-        self.canvas_window = self.canvas.create_window(
-            0,
-            0,
-            window=self.scroll_content,
-            anchor="nw",
-        )
-
-        self.scroll_content.bind(
-            "<Configure>",
-            self.on_scroll_content_configure
-        )
-
-        self.canvas.bind(
-            "<Configure>",
-            self.on_canvas_configure
-        )
-
         self.canvas.configure(
             yscrollcommand=self.scrollbar.set
+        )
+
+        self.scrollbar.pack(
+            side="right",
+            fill="y",
         )
 
         self.canvas.pack(
@@ -542,30 +546,29 @@ class RadioApp:
             expand=True,
         )
 
-        self.scrollbar.pack(
-            side="right",
-            fill="y",
+        self.cards_frame = tk.Frame(
+            self.canvas,
+            bg=self.BG,
         )
 
-        self.canvas.bind_all(
-            "<MouseWheel>",
-            self.on_mousewheel
+        self.canvas_window = self.canvas.create_window(
+            (0, 0),
+            window=self.cards_frame,
+            anchor="nw",
+        )
+
+        self.cards_frame.bind(
+            "<Configure>",
+            self.on_cards_configure
+        )
+
+        self.canvas.bind(
+            "<Configure>",
+            self.on_canvas_configure
         )
 
         # ====================================================
-        # NOW PLAYING
-        # ====================================================
-
-        self.build_now_playing()
-
-        # ====================================================
-        # STATIONS
-        # ====================================================
-
-        self.build_station_section()
-
-        # ====================================================
-        # BOTTOM PLAYER
+        # PLAYER BAR
         # ====================================================
 
         self.build_player_bar()
@@ -576,7 +579,6 @@ class RadioApp:
 
     def build_sidebar(self):
 
-        # title
         tk.Label(
             self.sidebar,
             text="LIBRARY",
@@ -585,23 +587,26 @@ class RadioApp:
             font=("Segoe UI", 8, "bold"),
         ).pack(
             anchor="w",
-            padx=18,
-            pady=(20, 9),
+            padx=20,
+            pady=(20, 10),
         )
 
-        self.home_button = self.sidebar_button(
-            "⌂   Home",
-            self.render_home,
+        self.add_sidebar_button(
+            "⌂",
+            "Home",
+            lambda: self.show_view("home"),
         )
 
-        self.favorites_button = self.sidebar_button(
-            "★   Favorites",
-            self.show_favorites,
+        self.add_sidebar_button(
+            "★",
+            "Favorites",
+            lambda: self.show_view("favorites"),
         )
 
-        self.history_button = self.sidebar_button(
-            "◷   History",
-            self.show_history,
+        self.add_sidebar_button(
+            "◷",
+            "History",
+            lambda: self.show_view("history"),
         )
 
         tk.Label(
@@ -612,111 +617,102 @@ class RadioApp:
             font=("Segoe UI", 8, "bold"),
         ).pack(
             anchor="w",
-            padx=18,
-            pady=(26, 9),
+            padx=20,
+            pady=(24, 10),
         )
-
-        self.category_buttons = []
 
         for category in get_categories():
 
-            button = self.sidebar_button(
+            self.add_sidebar_button(
+                "•",
                 category,
-                lambda c=category: self.open_category(c),
+                lambda c=category: self.show_category(c),
             )
 
-            self.category_buttons.append(
-                (category, button)
-            )
-
-        # bottom info
-        bottom = tk.Frame(
-            self.sidebar,
-            bg=self.SIDEBAR,
-        )
-
-        bottom.pack(
-            side="bottom",
-            fill="x",
-            padx=18,
-            pady=18,
-        )
-
-        tk.Frame(
-            bottom,
-            bg=self.BORDER,
-            height=1,
-        ).pack(
-            fill="x",
-            pady=(0, 12),
-        )
-
-        tk.Label(
-            bottom,
-            text="RADIOSTATION 3D",
-            bg=self.SIDEBAR,
-            fg=self.TEXT_SECONDARY,
-            font=("Segoe UI", 8, "bold"),
-        ).pack(
-            anchor="w"
-        )
-
-        tk.Label(
-            bottom,
-            text=f"Version {APP_VERSION}",
-            bg=self.SIDEBAR,
-            fg=self.TEXT_MUTED,
-            font=("Segoe UI", 7),
-        ).pack(
-            anchor="w"
-        )
-
-    def sidebar_button(
+    def add_sidebar_button(
         self,
+        icon,
         text,
         command,
     ):
 
-        button = tk.Label(
+        button = tk.Frame(
             self.sidebar,
-            text=text,
             bg=self.SIDEBAR,
-            fg=self.TEXT_SECONDARY,
-            anchor="w",
-            padx=14,
-            pady=9,
-            font=("Segoe UI", 9),
             cursor="hand2",
+            height=40,
         )
 
         button.pack(
             fill="x",
-            padx=7,
-            pady=1,
+            padx=10,
+            pady=2,
         )
 
-        button.bind(
-            "<Button-1>",
-            lambda e: command()
+        button.pack_propagate(False)
+
+        icon_label = tk.Label(
+            button,
+            text=icon,
+            bg=self.SIDEBAR,
+            fg=self.TEXT_MUTED,
+            font=("Segoe UI", 12),
         )
 
-        button.bind(
-            "<Enter>",
-            lambda e, b=button: b.config(
-                bg=self.SURFACE_2,
-                fg=self.TEXT,
+        icon_label.pack(
+            side="left",
+            padx=(10, 10),
+        )
+
+        text_label = tk.Label(
+            button,
+            text=text,
+            bg=self.SIDEBAR,
+            fg=self.TEXT_SECONDARY,
+            font=("Segoe UI", 9),
+        )
+
+        text_label.pack(
+            side="left",
+        )
+
+        for widget in (
+            button,
+            icon_label,
+            text_label,
+        ):
+            widget.bind(
+                "<Button-1>",
+                lambda event: command()
             )
-        )
 
-        button.bind(
-            "<Leave>",
-            lambda e, b=button: b.config(
-                bg=self.SIDEBAR,
-                fg=self.TEXT_SECONDARY,
+            widget.bind(
+                "<Enter>",
+                lambda event, b=button:
+                self.sidebar_hover(b, True)
             )
+
+            widget.bind(
+                "<Leave>",
+                lambda event, b=button:
+                self.sidebar_hover(b, False)
+            )
+
+    def sidebar_hover(self, widget, active):
+
+        widget.configure(
+            bg=self.SURFACE_2
+            if active
+            else self.SIDEBAR
         )
 
-        return button
+        for child in widget.winfo_children():
+
+            child.configure(
+                bg=self.SURFACE_2
+                if active
+                else self.SIDEBAR
+            )
 
     # ========================================================
     # NOW PLAYING
@@ -724,46 +720,28 @@ class RadioApp:
 
     def build_now_playing(self):
 
-        self.now_playing = tk.Frame(
-            self.scroll_content,
-            bg=self.SURFACE,
-            height=330,
-            highlightbackground=self.BORDER,
-            highlightthickness=1,
-        )
-
-        self.now_playing.pack(
-            fill="x",
-            pady=(0, 20),
-        )
-
-        self.now_playing.pack_propagate(False)
-
         # ----------------------------------------------------
-        # Cover
+        # COVER
         # ----------------------------------------------------
 
-        self.cover = tk.Canvas(
+        self.cover_canvas = tk.Canvas(
             self.now_playing,
-            width=240,
-            height=240,
+            width=150,
+            height=150,
             bg=self.SURFACE,
             highlightthickness=0,
         )
 
-        self.cover.pack(
+        self.cover_canvas.pack(
             side="left",
-            padx=(28, 24),
-            pady=34,
+            padx=(26, 20),
+            pady=25,
         )
 
-        self.draw_cover(
-            "RADIO",
-            False,
-        )
+        self.draw_cover()
 
         # ----------------------------------------------------
-        # Information
+        # INFO
         # ----------------------------------------------------
 
         info = tk.Frame(
@@ -775,333 +753,475 @@ class RadioApp:
             side="left",
             fill="both",
             expand=True,
-            pady=30,
+            pady=25,
         )
 
-        tk.Label(
+        self.live_label = tk.Label(
             info,
-            text="NOW PLAYING",
+            text="●  READY",
             bg=self.SURFACE,
-            fg=self.ACCENT,
+            fg=self.TEXT_MUTED,
             font=("Segoe UI", 8, "bold"),
-        ).pack(
+        )
+
+        self.live_label.pack(
             anchor="w"
         )
 
-        self.station_title = tk.Label(
+        self.now_station_label = tk.Label(
             info,
-            text="Select a station",
+            text="Nothing playing",
             bg=self.SURFACE,
             fg=self.TEXT,
-            font=("Segoe UI", 25, "bold"),
-            anchor="w",
+            font=("Segoe UI", 23, "bold"),
         )
 
-        self.station_title.pack(
+        self.now_station_label.pack(
             anchor="w",
-            pady=(7, 0),
+            pady=(5, 2),
         )
 
-        self.station_category = tk.Label(
+        self.now_title_label = tk.Label(
             info,
-            text="Internet Radio",
+            text="Choose a station to start listening",
             bg=self.SURFACE,
             fg=self.TEXT_SECONDARY,
             font=("Segoe UI", 10),
         )
 
-        self.station_category.pack(
-            anchor="w",
-            pady=(2, 0),
+        self.now_title_label.pack(
+            anchor="w"
         )
 
-        self.station_status = tk.Label(
+        # ----------------------------------------------------
+        # WAVEFORM
+        # ----------------------------------------------------
+
+        self.wave_canvas = tk.Canvas(
             info,
-            text="● Ready to play",
-            bg=self.SURFACE,
-            fg=self.TEXT_MUTED,
-            font=("Segoe UI", 9),
-        )
-
-        self.station_status.pack(
-            anchor="w",
-            pady=(13, 0),
-        )
-
-        # ----------------------------------------------------
-        # Track information
-        # ----------------------------------------------------
-
-        track_box = tk.Frame(
-            info,
-            bg=self.SURFACE_2,
-        )
-
-        track_box.pack(
-            fill="x",
-            padx=(0, 28),
-            pady=(20, 0),
-        )
-
-        self.track_label = tk.Label(
-            track_box,
-            text="♪  No track information",
-            bg=self.SURFACE_2,
-            fg=self.TEXT_SECONDARY,
-            anchor="w",
-            font=("Segoe UI", 9),
-        )
-
-        self.track_label.pack(
-            fill="x",
-            padx=13,
-            pady=10,
-        )
-
-        # ----------------------------------------------------
-        # Waveform
-        # ----------------------------------------------------
-
-        self.waveform = tk.Canvas(
-            info,
-            height=50,
+            width=360,
+            height=44,
             bg=self.SURFACE,
             highlightthickness=0,
         )
 
-        self.waveform.pack(
-            fill="x",
-            padx=(0, 28),
-            pady=(14, 0),
+        self.wave_canvas.pack(
+            anchor="w",
+            pady=(18, 0),
         )
 
         self.wave_bars = []
 
-        for _ in range(42):
+        for i in range(30):
 
-            item = self.waveform.create_rectangle(
-                0,
-                0,
-                0,
-                0,
-                fill=self.SURFACE_3,
+            x = 4 + i * 11
+
+            bar = self.wave_canvas.create_rectangle(
+                x,
+                20,
+                x + 5,
+                24,
+                fill=self.ACCENT,
                 outline="",
             )
 
-            self.wave_bars.append(item)
+            self.wave_bars.append(bar)
 
         # ----------------------------------------------------
-        # Favorite
+        # RIGHT STATUS
         # ----------------------------------------------------
 
-        self.favorite_button = tk.Label(
+        right = tk.Frame(
             self.now_playing,
-            text="☆",
+            bg=self.SURFACE,
+            width=180,
+        )
+
+        right.pack(
+            side="right",
+            fill="y",
+            padx=24,
+            pady=25,
+        )
+
+        right.pack_propagate(False)
+
+        tk.Label(
+            right,
+            text="SOURCE",
             bg=self.SURFACE,
             fg=self.TEXT_MUTED,
-            font=("Segoe UI", 25),
-            cursor="hand2",
+            font=("Segoe UI", 8, "bold"),
+        ).pack(
+            anchor="e"
         )
 
-        self.favorite_button.place(
-            relx=0.965,
-            rely=0.08,
-            anchor="ne",
+        self.source_label = tk.Label(
+            right,
+            text="—",
+            bg=self.SURFACE,
+            fg=self.TEXT_SECONDARY,
+            font=("Segoe UI", 9),
         )
 
-        self.favorite_button.bind(
-            "<Button-1>",
-            lambda e: self.toggle_favorite()
-        )
-
-        self.favorite_button.bind(
-            "<Enter>",
-            lambda e: self.favorite_button.config(
-                fg=self.ACCENT
-            )
-        )
-
-        self.favorite_button.bind(
-            "<Leave>",
-            lambda e: self.update_favorite_button()
+        self.source_label.pack(
+            anchor="e",
+            pady=(4, 0),
         )
 
     # ========================================================
     # COVER
     # ========================================================
 
-    def draw_cover(
-        self,
-        station_name,
-        active,
-    ):
+    def draw_cover(self):
 
-        self.cover.delete("all")
+        canvas = self.cover_canvas
 
-        w = 240
-        h = 240
+        canvas.delete("all")
 
-        # shadow / base
-        self.cover.create_rectangle(
-            6,
-            6,
-            w - 6,
-            h - 6,
-            fill=self.SURFACE_2,
-            outline=self.BORDER,
-        )
-
-        # outer ring
-        self.cover.create_oval(
-            28,
-            28,
-            212,
-            212,
-            fill=self.SURFACE_3,
-            outline=(
-                self.ACCENT
-                if active
-                else self.BORDER_LIGHT
-            ),
-            width=2,
-        )
-
-        # inner ring
-        self.cover.create_oval(
-            68,
-            68,
-            172,
-            172,
-            fill=self.BG,
-            outline=(
-                self.ACCENT_DARK
-                if active
-                else self.BORDER
-            ),
-            width=2,
-        )
-
-        # center
-        self.cover.create_oval(
-            96,
-            96,
-            144,
-            144,
-            fill=(
-                self.ACCENT
-                if active
-                else self.SURFACE_3
-            ),
+        canvas.create_oval(
+            8,
+            8,
+            142,
+            142,
+            fill=self.ACCENT_DARK,
             outline="",
         )
 
-        self.cover.create_text(
-            120,
-            120,
-            text="♪",
-            fill=self.WHITE,
-            font=("Segoe UI", 22, "bold"),
+        canvas.create_oval(
+            20,
+            20,
+            130,
+            130,
+            fill=self.SURFACE_2,
+            outline=self.ACCENT,
+            width=2,
         )
 
-        # name
-        short_name = (
-            station_name[:18]
-            if station_name
-            else "RADIO"
+        canvas.create_oval(
+            48,
+            48,
+            102,
+            102,
+            fill=self.ACCENT,
+            outline="",
         )
 
-        self.cover.create_text(
-            120,
-            202,
-            text=short_name.upper(),
-            fill=self.TEXT_SECONDARY,
-            font=("Segoe UI", 7, "bold"),
+        canvas.create_oval(
+            65,
+            65,
+            85,
+            85,
+            fill=self.SURFACE,
+            outline="",
+        )
+
+        canvas.create_text(
+            75,
+            117,
+            text="♫",
+            fill=self.TEXT,
+            font=("Segoe UI", 17, "bold"),
         )
 
     # ========================================================
-    # STATIONS SECTION
+    # PLAYER BAR
     # ========================================================
 
-    def build_station_section(self):
+    def build_player_bar(self):
 
-        self.station_section = tk.Frame(
-            self.scroll_content,
-            bg=self.BG,
+        self.player_bar = tk.Frame(
+            self.root,
+            bg=self.SURFACE,
+            height=84,
         )
 
-        self.station_section.pack(
-            fill="both",
-            expand=True,
-            pady=(0, 90),
-        )
-
-        header = tk.Frame(
-            self.station_section,
-            bg=self.BG,
-        )
-
-        header.pack(
+        self.player_bar.pack(
             fill="x",
-            pady=(0, 12),
+            padx=24,
+            pady=(0, 16),
         )
 
-        self.section_title = tk.Label(
-            header,
-            text="Popular stations",
-            bg=self.BG,
+        self.player_bar.pack_propagate(False)
+
+        # ----------------------------------------------------
+        # CURRENT
+        # ----------------------------------------------------
+
+        current = tk.Frame(
+            self.player_bar,
+            bg=self.SURFACE,
+            width=250,
+        )
+
+        current.pack(
+            side="left",
+            fill="y",
+            padx=18,
+        )
+
+        current.pack_propagate(False)
+
+        self.bottom_station = tk.Label(
+            current,
+            text="Nothing playing",
+            bg=self.SURFACE,
             fg=self.TEXT,
-            font=("Segoe UI", 16, "bold"),
+            font=("Segoe UI", 10, "bold"),
         )
 
-        self.section_title.pack(
-            side="left"
+        self.bottom_station.pack(
+            anchor="w",
+            pady=(20, 0),
         )
 
-        self.section_count = tk.Label(
-            header,
-            text="",
-            bg=self.BG,
+        self.bottom_title = tk.Label(
+            current,
+            text="—",
+            bg=self.SURFACE,
             fg=self.TEXT_MUTED,
             font=("Segoe UI", 8),
         )
 
-        self.section_count.pack(
+        self.bottom_title.pack(
+            anchor="w",
+            pady=(2, 0),
+        )
+
+        # ----------------------------------------------------
+        # CONTROLS
+        # ----------------------------------------------------
+
+        controls = tk.Frame(
+            self.player_bar,
+            bg=self.SURFACE,
+        )
+
+        controls.pack(
             side="left",
-            padx=10,
-            pady=4,
-        )
-
-        self.cards_frame = tk.Frame(
-            self.station_section,
-            bg=self.BG,
-        )
-
-        self.cards_frame.pack(
-            fill="both",
             expand=True,
         )
 
-        self.cards_frame.bind(
-            "<Configure>",
-            self.refresh_card_columns,
+        self.stop_button = self.make_control_button(
+            controls,
+            "■",
+            self.stop,
+            30,
         )
 
-        self.render_home()
+        self.stop_button.pack(
+            side="left",
+            padx=6,
+        )
+
+        self.prev_button = self.make_control_button(
+            controls,
+            "↶",
+            self.previous_station,
+            30,
+        )
+
+        self.prev_button.pack(
+            side="left",
+            padx=6,
+        )
+
+        self.play_button = tk.Button(
+            controls,
+            text="▶",
+            command=self.toggle_play,
+            bg=self.ACCENT,
+            fg=self.WHITE,
+            activebackground=self.ACCENT_HOVER,
+            activeforeground=self.WHITE,
+            relief="flat",
+            bd=0,
+            width=4,
+            height=1,
+            font=("Segoe UI", 14, "bold"),
+            cursor="hand2",
+        )
+
+        self.play_button.pack(
+            side="left",
+            padx=8,
+        )
+
+        self.next_button = self.make_control_button(
+            controls,
+            "↷",
+            self.next_station,
+            30,
+        )
+
+        self.next_button.pack(
+            side="left",
+            padx=6,
+        )
+
+        self.random_button = self.make_control_button(
+            controls,
+            "⤨",
+            self.random_station,
+            30,
+        )
+
+        self.random_button.pack(
+            side="left",
+            padx=6,
+        )
+
+        # ----------------------------------------------------
+        # VOLUME
+        # ----------------------------------------------------
+
+        volume = tk.Frame(
+            self.player_bar,
+            bg=self.SURFACE,
+            width=250,
+        )
+
+        volume.pack(
+            side="right",
+            fill="y",
+            padx=18,
+        )
+
+        volume.pack_propagate(False)
+
+        self.volume_icon = tk.Label(
+            volume,
+            text="🔊",
+            bg=self.SURFACE,
+            fg=self.TEXT_SECONDARY,
+            font=("Segoe UI", 11),
+            cursor="hand2",
+        )
+
+        self.volume_icon.pack(
+            side="left",
+            pady=27,
+        )
+
+        self.volume_icon.bind(
+            "<Button-1>",
+            lambda event: self.toggle_mute()
+        )
+
+        self.volume_var = tk.DoubleVar(
+            value=DEFAULT_VOLUME
+        )
+
+        self.volume_scale = ttk.Scale(
+            volume,
+            from_=0,
+            to=100,
+            orient="horizontal",
+            variable=self.volume_var,
+            command=self.volume_changed,
+            style="Radio.Horizontal.TScale",
+        )
+
+        self.volume_scale.pack(
+            side="left",
+            fill="x",
+            expand=True,
+            padx=(10, 8),
+            pady=28,
+        )
+
+        self.volume_label = tk.Label(
+            volume,
+            text=f"{DEFAULT_VOLUME}%",
+            bg=self.SURFACE,
+            fg=self.TEXT_MUTED,
+            font=("Segoe UI", 8),
+            width=4,
+        )
+
+        self.volume_label.pack(
+            side="right",
+            pady=28,
+        )
 
     # ========================================================
-    # HOME
+    # BUTTON
     # ========================================================
+
+    def make_control_button(
+        self,
+        parent,
+        text,
+        command,
+        width,
+    ):
+
+        return tk.Button(
+            parent,
+            text=text,
+            command=command,
+            bg=self.SURFACE,
+            fg=self.TEXT_SECONDARY,
+            activebackground=self.SURFACE_3,
+            activeforeground=self.TEXT,
+            relief="flat",
+            bd=0,
+            width=width // 10,
+            font=("Segoe UI", 11, "bold"),
+            cursor="hand2",
+        )
+
+    # ========================================================
+    # VIEWS
+    # ========================================================
+
+    def show_view(self, view):
+
+        self.current_view = view
+
+        if view == "home":
+            self.render_home()
+
+        elif view == "favorites":
+            self.render_favorites()
+
+        elif view == "history":
+            self.render_history()
+
+    def show_category(self, category):
+
+        self.current_category = category
+        self.current_view = "category"
+
+        self.section_title.configure(
+            text=category
+        )
+
+        self.render_stations(
+            get_stations_by_category(category)
+        )
 
     def render_home(self):
 
-        self.current_view = "home"
         self.current_category = None
 
-        self.section_title.config(
-            text="Popular stations"
+        all_stations = {}
+
+        for category, stations in STATIONS.items():
+
+            for name, url in stations.items():
+
+                all_stations[name] = url
+
+        self.section_title.configure(
+            text="All Stations"
         )
 
-        self.clear_cards()
+        self.render_stations(
+            all_stations
+        )
+
+    def render_favorites(self):
 
         stations = {}
 
@@ -1109,127 +1229,102 @@ class RadioApp:
 
             for name, url in category_stations.items():
 
-                if name not in stations:
-                    stations[name] = (
-                        url,
-                        category,
-                    )
+                if name in self.favorite_stations:
+                    stations[name] = url
 
-        self.render_station_grid(
+        self.section_title.configure(
+            text="Favorites"
+        )
+
+        self.render_stations(
+            stations
+        )
+
+    def render_history(self):
+
+        stations = {}
+
+        for name in reversed(self.history):
+
+            url = self.find_station_url(name)
+
+            if url:
+                stations[name] = url
+
+        self.section_title.configure(
+            text="Recently Played"
+        )
+
+        self.render_stations(
             stations
         )
 
     # ========================================================
-    # CATEGORY
+    # STATIONS
     # ========================================================
 
-    def open_category(
-        self,
-        category,
-    ):
+    def render_stations(self, stations):
 
-        self.current_view = "category"
-        self.current_category = category
+        for child in self.cards_frame.winfo_children():
+            child.destroy()
 
-        self.section_title.config(
-            text=category.title()
-        )
-
-        self.clear_cards()
-
-        category_stations = get_stations_by_category(
-            category
-        )
-
-        stations = {
-            name: (
-                url,
-                category,
-            )
-            for name, url in category_stations.items()
-        }
-
-        self.render_station_grid(
+        self.displayed_stations = dict(
             stations
         )
 
-    # ========================================================
-    # GRID
-    # ========================================================
+        count = len(stations)
 
-    def calculate_columns(self):
-
-        width = self.cards_frame.winfo_width()
-
-        if width < 500:
-            return 1
-
-        if width < 800:
-            return 2
-
-        if width < 1100:
-            return 3
-
-        return 4
-
-    def refresh_card_columns(
-        self,
-        event=None,
-    ):
-
-        if not self.displayed_stations:
-            return
-
-        self.render_station_grid(
-            self.displayed_stations,
-            rebuild=True,
+        self.section_count.configure(
+            text=f"{count} stations"
         )
-
-    def render_station_grid(
-        self,
-        stations,
-        rebuild=True,
-    ):
-
-        self.displayed_stations = stations
-
-        if rebuild:
-            self.clear_cards()
 
         if not stations:
-            self.show_empty_state()
+
+            empty = tk.Frame(
+                self.cards_frame,
+                bg=self.BG,
+                height=180,
+            )
+
+            empty.pack(
+                fill="x",
+                pady=30,
+            )
+
+            tk.Label(
+                empty,
+                text="Nothing here yet",
+                bg=self.BG,
+                fg=self.TEXT,
+                font=("Segoe UI", 15, "bold"),
+            ).pack(
+                pady=(50, 5)
+            )
+
+            tk.Label(
+                empty,
+                text="Choose another category or station.",
+                bg=self.BG,
+                fg=self.TEXT_MUTED,
+                font=("Segoe UI", 9),
+            ).pack()
+
             return
 
-        columns = self.calculate_columns()
+        columns = 3
 
-        self.section_count.config(
-            text=f"{len(stations)} stations"
-        )
-
-        for index, (name, data) in enumerate(
+        for index, (name, url) in enumerate(
             stations.items()
         ):
-
-            if not rebuild:
-                continue
-
-            url, category = data
-
-            card = self.create_station_card(
-                name,
-                url,
-                category,
-            )
 
             row = index // columns
             column = index % columns
 
-            card.grid(
-                row=row,
-                column=column,
-                sticky="nsew",
-                padx=5,
-                pady=5,
+            self.create_station_card(
+                name,
+                url,
+                row,
+                column,
             )
 
         for column in range(columns):
@@ -1247,534 +1342,518 @@ class RadioApp:
         self,
         name,
         url,
-        category,
+        row,
+        column,
     ):
 
         card = tk.Frame(
             self.cards_frame,
             bg=self.SURFACE,
-            height=185,
+            height=125,
             cursor="hand2",
-            highlightbackground=self.BORDER,
-            highlightthickness=1,
         )
 
-        card.pack_propagate(False)
+        card.grid(
+            row=row,
+            column=column,
+            sticky="nsew",
+            padx=5,
+            pady=5,
+        )
+
+        card.grid_propagate(False)
 
         # ----------------------------------------------------
-        # Top
+        # Icon
         # ----------------------------------------------------
 
-        top = tk.Frame(
+        icon = tk.Canvas(
             card,
-            bg=self.SURFACE,
-        )
-
-        top.pack(
-            fill="x",
-            padx=12,
-            pady=(12, 5),
-        )
-
-        logo = tk.Canvas(
-            top,
-            width=72,
-            height=72,
+            width=58,
+            height=58,
             bg=self.SURFACE,
             highlightthickness=0,
         )
 
-        logo.pack(
-            side="left"
+        icon.pack(
+            side="left",
+            padx=(14, 10),
+            pady=30,
         )
 
-        logo.create_rectangle(
-            3,
-            3,
-            69,
-            69,
-            fill=self.SURFACE_2,
-            outline=self.BORDER_LIGHT,
+        icon.create_oval(
+            4,
+            4,
+            54,
+            54,
+            fill=self.ACCENT_DARK,
+            outline="",
         )
 
-        logo.create_text(
-            36,
-            36,
-            text="♪",
-            fill=self.ACCENT,
-            font=("Segoe UI", 25, "bold"),
+        icon.create_text(
+            29,
+            29,
+            text="♫",
+            fill=self.WHITE,
+            font=("Segoe UI", 18, "bold"),
         )
 
-        # favorite
-        favorite = tk.Label(
-            top,
-            text=(
-                "★"
-                if name in self.favorite_stations
-                else "☆"
-            ),
+        # ----------------------------------------------------
+        # Text
+        # ----------------------------------------------------
+
+        text_frame = tk.Frame(
+            card,
             bg=self.SURFACE,
-            fg=(
-                self.ACCENT
-                if name in self.favorite_stations
-                else self.TEXT_MUTED
-            ),
+        )
+
+        text_frame.pack(
+            side="left",
+            fill="both",
+            expand=True,
+            pady=22,
+        )
+
+        title = tk.Label(
+            text_frame,
+            text=name,
+            bg=self.SURFACE,
+            fg=self.TEXT,
+            font=("Segoe UI", 10, "bold"),
+            anchor="w",
+        )
+
+        title.pack(
+            anchor="w",
+        )
+
+        source = (
+            "YOUTUBE"
+            if self.player.is_youtube_url(url)
+            else "RADIO"
+        )
+
+        source_label = tk.Label(
+            text_frame,
+            text=source,
+            bg=self.SURFACE,
+            fg=self.ACCENT
+            if source == "YOUTUBE"
+            else self.TEXT_MUTED,
+            font=("Segoe UI", 7, "bold"),
+        )
+
+        source_label.pack(
+            anchor="w",
+            pady=(5, 0),
+        )
+
+        # ----------------------------------------------------
+        # Favorite
+        # ----------------------------------------------------
+
+        favorite = tk.Label(
+            card,
+            text="★"
+            if name in self.favorite_stations
+            else "☆",
+            bg=self.SURFACE,
+            fg=self.WARNING
+            if name in self.favorite_stations
+            else self.TEXT_MUTED,
             font=("Segoe UI", 14),
             cursor="hand2",
         )
 
         favorite.pack(
             side="right",
-            anchor="n",
+            padx=12,
         )
 
         favorite.bind(
             "<Button-1>",
-            lambda e, n=name:
-                self.toggle_station_favorite(n),
+            lambda event, n=name:
+            self.toggle_favorite(n)
         )
 
         # ----------------------------------------------------
-        # Name
+        # Click
         # ----------------------------------------------------
 
-        title = tk.Label(
+        for widget in (
             card,
-            text=name,
-            bg=self.SURFACE,
-            fg=self.TEXT,
-            anchor="w",
-            font=("Segoe UI", 10, "bold"),
-        )
-
-        title.pack(
-            fill="x",
-            padx=13,
-            pady=(2, 0),
-        )
-
-        subtitle = tk.Label(
-            card,
-            text=category,
-            bg=self.SURFACE,
-            fg=self.TEXT_MUTED,
-            anchor="w",
-            font=("Segoe UI", 7),
-        )
-
-        subtitle.pack(
-            fill="x",
-            padx=13,
-            pady=(2, 0),
-        )
-
-        # ----------------------------------------------------
-        # Bottom
-        # ----------------------------------------------------
-
-        bottom = tk.Frame(
-            card,
-            bg=self.SURFACE,
-        )
-
-        bottom.pack(
-            side="bottom",
-            fill="x",
-            padx=13,
-            pady=10,
-        )
-
-        live = tk.Label(
-            bottom,
-            text="● LIVE",
-            bg=self.SURFACE,
-            fg=self.SUCCESS,
-            font=("Segoe UI", 7, "bold"),
-        )
-
-        live.pack(
-            side="left"
-        )
-
-        play = tk.Label(
-            bottom,
-            text="PLAY  ›",
-            bg=self.SURFACE,
-            fg=self.TEXT_MUTED,
-            font=("Segoe UI", 7, "bold"),
-            cursor="hand2",
-        )
-
-        play.pack(
-            side="right"
-        )
-
-        # ----------------------------------------------------
-        # Hover
-        # ----------------------------------------------------
-
-        widgets = [
-            card,
-            top,
-            logo,
+            icon,
+            text_frame,
             title,
-            subtitle,
-            bottom,
-            live,
-        ]
+            source_label,
+        ):
 
-        def enter(event=None):
-
-            for widget in widgets:
-
-                try:
-                    widget.config(
-                        bg=self.SURFACE_3
-                    )
-                except Exception:
-                    pass
-
-            play.config(
-                bg=self.SURFACE_3,
-                fg=self.ACCENT_HOVER,
+            widget.bind(
+                "<Button-1>",
+                lambda event,
+                n=name,
+                u=url:
+                self.play_station(n, u)
             )
-
-        def leave(event=None):
-
-            for widget in widgets:
-
-                try:
-                    widget.config(
-                        bg=self.SURFACE
-                    )
-                except Exception:
-                    pass
-
-            play.config(
-                bg=self.SURFACE,
-                fg=self.TEXT_MUTED,
-            )
-
-        def play_station(event=None):
-
-            self.play_station(
-                name,
-                url,
-            )
-
-        for widget in widgets:
 
             widget.bind(
                 "<Enter>",
-                enter
+                lambda event,
+                c=card:
+                self.card_hover(c, True)
             )
 
             widget.bind(
                 "<Leave>",
-                leave
+                lambda event,
+                c=card:
+                self.card_hover(c, False)
             )
 
-            widget.bind(
-                "<Button-1>",
-                play_station
-            )
-
-        play.bind(
-            "<Button-1>",
-            play_station
-        )
-
-        return card
-
     # ========================================================
-    # CLEAR
+    # CARD HOVER
     # ========================================================
 
-    def clear_cards(self):
+    def card_hover(self, card, active):
 
-        for widget in self.cards_frame.winfo_children():
+        color = (
+            self.SURFACE_2
+            if active
+            else self.SURFACE
+        )
 
-            widget.destroy()
+        card.configure(
+            bg=color
+        )
 
-        self.displayed_stations = {}
+        for child in card.winfo_children():
+
+            try:
+                child.configure(
+                    bg=color
+                )
+            except Exception:
+                pass
+
+            for subchild in child.winfo_children():
+
+                try:
+                    subchild.configure(
+                        bg=color
+                    )
+                except Exception:
+                    pass
 
     # ========================================================
-    # EMPTY
+    # PLAY STATION
     # ========================================================
 
-    def show_empty_state(self):
-
-        frame = tk.Frame(
-            self.cards_frame,
-            bg=self.BG,
-        )
-
-        frame.pack(
-            fill="x",
-            pady=60,
-        )
-
-        tk.Label(
-            frame,
-            text="○",
-            bg=self.BG,
-            fg=self.TEXT_MUTED,
-            font=("Segoe UI", 32),
-        ).pack()
-
-        tk.Label(
-            frame,
-            text="Nothing here yet",
-            bg=self.BG,
-            fg=self.TEXT_SECONDARY,
-            font=("Segoe UI", 11, "bold"),
-        ).pack(
-            pady=(8, 2)
-        )
-
-        tk.Label(
-            frame,
-            text="Choose another category or search for a station.",
-            bg=self.BG,
-            fg=self.TEXT_MUTED,
-            font=("Segoe UI", 8),
-        ).pack()
-
-    # ========================================================
-    # PLAYER BAR
-    # ========================================================
-
-    def build_player_bar(self):
-
-        self.player_bar = tk.Frame(
-            self.root,
-            bg=self.SURFACE,
-            height=78,
-            highlightbackground=self.BORDER,
-            highlightthickness=1,
-        )
-
-        self.player_bar.pack(
-            side="bottom",
-            fill="x",
-            padx=24,
-            pady=(0, 14),
-        )
-
-        self.player_bar.pack_propagate(False)
-
-        # ----------------------------------------------------
-        # Station
-        # ----------------------------------------------------
-
-        current = tk.Frame(
-            self.player_bar,
-            bg=self.SURFACE,
-        )
-
-        current.pack(
-            side="left",
-            fill="y",
-            padx=16,
-        )
-
-        self.player_station = tk.Label(
-            current,
-            text="Nothing playing",
-            bg=self.SURFACE,
-            fg=self.TEXT,
-            font=("Segoe UI", 9, "bold"),
-        )
-
-        self.player_station.pack(
-            anchor="w",
-            pady=(15, 0),
-        )
-
-        self.player_track = tk.Label(
-            current,
-            text="Choose a station",
-            bg=self.SURFACE,
-            fg=self.TEXT_MUTED,
-            font=("Segoe UI", 7),
-        )
-
-        self.player_track.pack(
-            anchor="w"
-        )
-
-        # ----------------------------------------------------
-        # Center controls
-        # ----------------------------------------------------
-
-        controls = tk.Frame(
-            self.player_bar,
-            bg=self.SURFACE,
-        )
-
-        controls.pack(
-            side="left",
-            padx=35,
-        )
-
-        self.stop_button = self.player_button(
-            controls,
-            "■",
-            self.stop,
-        )
-
-        self.play_button = self.player_button(
-            controls,
-            "▶",
-            self.toggle_play,
-            primary=True,
-        )
-
-        self.random_button = self.player_button(
-            controls,
-            "↗",
-            self.play_random,
-        )
-
-        # ----------------------------------------------------
-        # Volume
-        # ----------------------------------------------------
-
-        volume = tk.Frame(
-            self.player_bar,
-            bg=self.SURFACE,
-        )
-
-        volume.pack(
-            side="right",
-            padx=18,
-        )
-
-        self.volume_label = tk.Label(
-            volume,
-            text="VOL",
-            bg=self.SURFACE,
-            fg=self.TEXT_MUTED,
-            font=("Segoe UI", 7, "bold"),
-        )
-
-        self.volume_label.pack(
-            side="left",
-            padx=(0, 8),
-        )
-
-        self.volume_scale = tk.Scale(
-            volume,
-            from_=0,
-            to=100,
-            orient="horizontal",
-            length=130,
-            showvalue=False,
-            bg=self.SURFACE,
-            fg=self.TEXT,
-            troughcolor=self.SURFACE_3,
-            activebackground=self.ACCENT,
-            highlightthickness=0,
-            bd=0,
-            relief="flat",
-            sliderrelief="flat",
-            sliderlength=16,
-            width=8,
-            command=self.volume_changed,
-        )
-
-        self.volume_scale.pack(
-            side="left"
-        )
-
-    def player_button(
+    def play_station(
         self,
-        parent,
-        text,
-        command,
-        primary=False,
+        station_name,
+        url,
     ):
 
-        button = tk.Label(
-            parent,
-            text=text,
-            width=3,
-            pady=7,
-            bg=(
-                self.ACCENT
-                if primary
-                else self.SURFACE_2
-            ),
-            fg=self.TEXT,
-            font=("Segoe UI", 11, "bold"),
-            cursor="hand2",
+        if not url:
+            return
+
+        self.current_station_name = station_name
+        self.current_url = url
+
+        self.now_station_label.configure(
+            text=station_name
         )
 
-        button.pack(
-            side="left",
-            padx=3,
+        self.bottom_station.configure(
+            text=station_name
         )
 
-        normal = (
-            self.ACCENT
-            if primary
-            else self.SURFACE_2
+        self.bottom_title.configure(
+            text="Connecting..."
         )
 
-        hover = (
-            self.ACCENT_HOVER
-            if primary
-            else self.SURFACE_3
+        self.now_title_label.configure(
+            text="Connecting..."
         )
 
-        button.bind(
-            "<Button-1>",
-            lambda e: command()
+        source = (
+            "YouTube"
+            if self.player.is_youtube_url(url)
+            else "Internet Radio"
         )
 
-        button.bind(
-            "<Enter>",
-            lambda e: button.config(
-                bg=hover
+        self.source_label.configure(
+            text=source
+        )
+
+        self.live_label.configure(
+            text="●  CONNECTING",
+            fg=self.WARNING,
+        )
+
+        # History
+        if station_name in self.history:
+            self.history.remove(
+                station_name
             )
+
+        self.history.append(
+            station_name
         )
 
-        button.bind(
-            "<Leave>",
-            lambda e: button.config(
-                bg=normal
+        self.history = self.history[-50:]
+
+        success = self.player.play(
+            station_name,
+            url,
+        )
+
+        if success:
+
+            self.play_button.configure(
+                text="Ⅱ"
             )
+
+    # ========================================================
+    # PLAY / PAUSE
+    # ========================================================
+
+    def toggle_play(self):
+
+        state = self.player.get_state()
+
+        if state == "PAUSED":
+
+            self.player.resume()
+            return
+
+        if state in (
+            "PLAYING",
+            "BUFFERING",
+            "CONNECTING",
+        ):
+
+            self.player.pause()
+            return
+
+        if self.current_station_name and self.current_url:
+
+            self.player.play(
+                self.current_station_name,
+                self.current_url,
+            )
+
+    # ========================================================
+    # STOP
+    # ========================================================
+
+    def stop(self):
+
+        self.player.stop()
+
+        self.play_button.configure(
+            text="▶"
         )
 
-        return button
+        self.live_label.configure(
+            text="●  READY",
+            fg=self.TEXT_MUTED,
+        )
+
+    # ========================================================
+    # RANDOM
+    # ========================================================
+
+    def random_station(self):
+
+        stations = []
+
+        for category in STATIONS.values():
+
+            for name, url in category.items():
+
+                stations.append(
+                    (name, url)
+                )
+
+        if not stations:
+            return
+
+        name, url = random.choice(
+            stations
+        )
+
+        self.play_station(
+            name,
+            url,
+        )
+
+    # ========================================================
+    # NEXT / PREVIOUS
+    # ========================================================
+
+    def get_all_stations(self):
+
+        result = []
+
+        for category in STATIONS.values():
+
+            for name, url in category.items():
+
+                result.append(
+                    (name, url)
+                )
+
+        return result
+
+    def next_station(self):
+
+        stations = self.get_all_stations()
+
+        if not stations:
+            return
+
+        current = self.current_station_name
+
+        if not current:
+            self.play_station(
+                *stations[0]
+            )
+            return
+
+        names = [
+            item[0]
+            for item in stations
+        ]
+
+        if current not in names:
+            self.play_station(
+                *stations[0]
+            )
+            return
+
+        index = names.index(current)
+
+        index = (
+            index + 1
+        ) % len(stations)
+
+        self.play_station(
+            *stations[index]
+        )
+
+    def previous_station(self):
+
+        stations = self.get_all_stations()
+
+        if not stations:
+            return
+
+        current = self.current_station_name
+
+        if not current:
+            self.play_station(
+                *stations[-1]
+            )
+            return
+
+        names = [
+            item[0]
+            for item in stations
+        ]
+
+        if current not in names:
+            self.play_station(
+                *stations[-1]
+            )
+            return
+
+        index = names.index(current)
+
+        index = (
+            index - 1
+        ) % len(stations)
+
+        self.play_station(
+            *stations[index]
+        )
+
+    # ========================================================
+    # FAVORITES
+    # ========================================================
+
+    def toggle_favorite(self, name):
+
+        if name in self.favorite_stations:
+
+            self.favorite_stations.remove(
+                name
+            )
+
+        else:
+
+            self.favorite_stations.add(
+                name
+            )
+
+        # Обновляем текущий экран.
+        if self.current_view == "favorites":
+            self.render_favorites()
+
+        elif self.current_view == "category":
+            self.show_category(
+                self.current_category
+            )
+
+        elif self.current_view == "home":
+            self.render_home()
+
+    # Alias для совместимости
+    toggle_station_favorite = toggle_favorite
+
+    # ========================================================
+    # FIND URL
+    # ========================================================
+
+    def find_station_url(self, station_name):
+
+        for stations in STATIONS.values():
+
+            if station_name in stations:
+                return stations[station_name]
+
+        return None
 
     # ========================================================
     # SEARCH
     # ========================================================
 
-    def search_focus_in(self, event=None):
+    def search_focus_in(self, event):
 
-        if self.search_entry.get() == self.search_placeholder:
+        if (
+            self.search_entry.get()
+            == "Search stations..."
+        ):
 
             self.search_entry.delete(
                 0,
-                "end"
+                tk.END,
             )
 
-            self.search_entry.config(
+            self.search_entry.configure(
                 fg=self.TEXT
             )
 
-    def search_focus_out(self, event=None):
+    def search_focus_out(self, event):
 
-        if not self.search_entry.get().strip():
+        if not self.search_entry.get():
 
             self.search_entry.insert(
                 0,
-                self.search_placeholder
+                "Search stations..."
             )
 
-            self.search_entry.config(
+            self.search_entry.configure(
                 fg=self.TEXT_MUTED
             )
 
@@ -1790,8 +1869,8 @@ class RadioApp:
                 pass
 
         self.search_after_id = self.root.after(
-            120,
-            self.perform_search
+            150,
+            self.perform_search,
         )
 
     def perform_search(self):
@@ -1800,424 +1879,151 @@ class RadioApp:
 
         if (
             not query
-            or query == self.search_placeholder
+            or query == "Search stations..."
         ):
 
             self.render_home()
             return
 
+        results = {}
+
+        for category, stations in STATIONS.items():
+
+            for name, url in stations.items():
+
+                if query.lower() in name.lower():
+
+                    results[name] = url
+
         self.current_view = "search"
 
-        results = search_stations(
-            query
+        self.section_title.configure(
+            text=f"Search: {query}"
         )
 
-        stations = {}
-
-        for category, category_stations in STATIONS.items():
-
-            for name, url in category_stations.items():
-
-                if name in results:
-
-                    stations[name] = (
-                        url,
-                        category,
-                    )
-
-        self.section_title.config(
-            text=f"Search  •  {query}"
-        )
-
-        self.clear_cards()
-
-        self.render_station_grid(
-            stations
+        self.render_stations(
+            results
         )
 
     # ========================================================
-    # PLAY
+    # VOLUME
     # ========================================================
 
-    def play_station(
-        self,
-        name,
-        url,
-    ):
+    def initialize_volume(self):
 
-        self.current_station_name = name
-        self.current_url = url
-
-        category = self.get_station_category(
-            name
+        self.volume_var.set(
+            self.player.get_volume()
         )
 
-        self.station_title.config(
-            text=name
+        self.update_volume_ui(
+            self.player.get_volume()
         )
 
-        self.station_category.config(
-            text=category
-        )
+    def volume_changed(self, value):
 
-        self.station_status.config(
-            text="● Connecting...",
-            fg=self.WARNING,
-        )
-
-        self.track_label.config(
-            text="♪  Connecting..."
-        )
-
-        self.player_station.config(
-            text=name
-        )
-
-        self.player_track.config(
-            text="Connecting..."
-        )
-
-        self.play_button.config(
-            text="Ⅱ"
-        )
-
-        self.draw_cover(
-            name,
-            True,
-        )
-
-        self.update_favorite_button()
-
-        self.set_live_state(
-            "CONNECTING"
-        )
-
-        try:
-
-            result = self.player.play(
-                name,
-                url,
-            )
-
-            if result is False:
-
-                self.set_player_error(
-                    "Unable to start stream"
-                )
-
-        except Exception as error:
-
-            self.set_player_error(
-                str(error)
-            )
-
-    # ========================================================
-    # PLAY / PAUSE
-    # ========================================================
-
-    def toggle_play(self):
-
-        if not self.current_station_name:
+        if self.updating_volume:
             return
 
         try:
-
-            state = self.player.get_state()
-
-            if state == "PLAYING":
-
-                self.player.pause()
-
-            elif state == "PAUSED":
-
-                self.player.resume()
-
-            elif state in (
-                "STOPPED",
-                "ERROR",
-                "ENDED",
-            ):
-
-                self.player.play(
-                    self.current_station_name,
-                    self.current_url,
-                )
-
-            else:
-
-                self.player.resume()
-
-        except Exception as error:
-
-            self.set_player_error(
-                str(error)
-            )
-
-    # ========================================================
-    # STOP
-    # ========================================================
-
-    def stop(self):
-
-        try:
-            self.player.stop()
+            volume = int(float(value))
         except Exception:
-            pass
-
-        self.set_live_state(
-            "OFFLINE"
-        )
-
-        self.station_status.config(
-            text="● Stopped",
-            fg=self.TEXT_MUTED,
-        )
-
-        self.track_label.config(
-            text="♪  No track information"
-        )
-
-        self.player_track.config(
-            text="Playback stopped"
-        )
-
-        self.play_button.config(
-            text="▶"
-        )
-
-        self.draw_cover(
-            self.current_station_name or "RADIO",
-            False,
-        )
-
-    # ========================================================
-    # RANDOM
-    # ========================================================
-
-    def play_random(self):
-
-        stations = []
-
-        for category, category_stations in STATIONS.items():
-
-            for name, url in category_stations.items():
-
-                stations.append(
-                    (name, url)
-                )
-
-        if not stations:
             return
 
-        # Не выбираем ту же станцию,
-        # если есть другие варианты.
-        candidates = [
-            station
-            for station in stations
-            if station[0] != self.current_station_name
-        ]
-
-        if candidates:
-            stations = candidates
-
-        name, url = random.choice(
-            stations
+        self.player.set_volume(
+            volume
         )
 
-        self.play_station(
-            name,
-            url
+        self.update_volume_ui(
+            volume
         )
 
-    # ========================================================
-    # FAVORITES
-    # ========================================================
+    def update_volume_ui(self, volume):
 
-    def toggle_station_favorite(
-        self,
-        name,
-    ):
-
-        if name in self.favorite_stations:
-
-            self.favorite_stations.remove(
-                name
-            )
-
-        else:
-
-            self.favorite_stations.add(
-                name
-            )
-
-        self.update_favorite_button()
-
-        # Перерисовываем текущую страницу
-        if self.current_view == "category":
-
-            self.open_category(
-                self.current_category
-            )
-
-        elif self.current_view == "favorites":
-
-            self.show_favorites()
-
-    def toggle_favorite(self):
-
-        if not self.current_station_name:
-            return
-
-        self.toggle_station_favorite(
-            self.current_station_name
-        )
-
-    def update_favorite_button(self):
-
-        if (
-            self.current_station_name
-            in self.favorite_stations
-        ):
-
-            self.favorite_button.config(
-                text="★",
-                fg=self.ACCENT,
-            )
-
-        else:
-
-            self.favorite_button.config(
-                text="☆",
-                fg=self.TEXT_MUTED,
-            )
-
-    def show_favorites(self):
-
-        self.current_view = "favorites"
-        self.current_category = None
-
-        self.section_title.config(
-            text="Favorites"
-        )
-
-        self.clear_cards()
-
-        stations = {}
-
-        for name in self.favorite_stations:
-
-            for category, category_stations in STATIONS.items():
-
-                if name in category_stations:
-
-                    stations[name] = (
-                        category_stations[name],
-                        category,
-                    )
-
-        self.render_station_grid(
-            stations
-        )
-
-    # ========================================================
-    # HISTORY
-    # ========================================================
-
-    def add_to_history(
-        self,
-        name,
-    ):
-
-        if not name:
-            return
-
-        if name in self.history:
-
-            self.history.remove(
-                name
-            )
-
-        self.history.insert(
+        volume = max(
             0,
-            name
+            min(100, int(volume))
         )
 
-        self.history = self.history[:20]
-
-    def show_history(self):
-
-        self.current_view = "history"
-
-        self.section_title.config(
-            text="Recently played"
+        self.volume_label.configure(
+            text=f"{volume}%"
         )
 
-        self.clear_cards()
+        if volume <= 0:
 
-        stations = {}
+            self.volume_icon.configure(
+                text="🔇"
+            )
 
-        for name in self.history:
+        elif volume < 50:
 
-            for category, category_stations in STATIONS.items():
+            self.volume_icon.configure(
+                text="🔉"
+            )
 
-                if name in category_stations:
+        else:
 
-                    stations[name] = (
-                        category_stations[name],
-                        category,
-                    )
+            self.volume_icon.configure(
+                text="🔊"
+            )
 
-        self.render_station_grid(
-            stations
-        )
+    def toggle_mute(self):
+
+        muted = self.player.toggle_mute()
+
+        if muted:
+
+            self.volume_icon.configure(
+                text="🔇"
+            )
+
+        else:
+
+            self.update_volume_ui(
+                self.player.get_volume()
+            )
 
     # ========================================================
     # PLAYER CALLBACKS
     # ========================================================
 
-    def _player_state_callback(
-        self,
-        state,
-    ):
+    def _player_state_callback(self, state):
 
-        # VLC callback может прийти из worker thread.
-        # Передаём выполнение в Tkinter main thread.
-        self.safe_after(
-            lambda: self.handle_player_state(
-                state
-            )
+        if self.closing:
+            return
+
+        self.root.after(
+            0,
+            lambda s=state:
+            self.player_state_changed(s)
         )
 
-    def _player_error_callback(
-        self,
-        message,
-    ):
+    def _player_error_callback(self, message):
 
-        self.safe_after(
-            lambda: self.set_player_error(
-                message
-            )
+        if self.closing:
+            return
+
+        self.root.after(
+            0,
+            lambda m=message:
+            self.player_error(m)
         )
 
-    def _player_metadata_callback(
-        self,
-        title,
-    ):
+    def _player_metadata_callback(self, title):
 
-        self.safe_after(
-            lambda: self.update_metadata(
-                title
-            )
+        if self.closing:
+            return
+
+        self.root.after(
+            0,
+            lambda t=title:
+            self.player_metadata_changed(t)
         )
 
     # ========================================================
-    # PLAYER STATE
+    # STATE UI
     # ========================================================
 
-    def handle_player_state(
-        self,
-        state,
-    ):
+    def player_state_changed(self, state):
 
         if self.closing:
             return
@@ -2226,135 +2032,185 @@ class RadioApp:
 
         if state == "PLAYING":
 
-            self.station_status.config(
-                text="● Live now",
+            self.live_label.configure(
+                text="●  LIVE",
                 fg=self.SUCCESS,
             )
 
-            self.play_button.config(
+            self.play_button.configure(
                 text="Ⅱ"
-            )
-
-            self.set_live_state(
-                "LIVE"
-            )
-
-            self.add_to_history(
-                self.current_station_name
             )
 
         elif state == "PAUSED":
 
-            self.station_status.config(
-                text="● Paused",
-                fg=self.TEXT_MUTED,
+            self.live_label.configure(
+                text="●  PAUSED",
+                fg=self.WARNING,
             )
 
-            self.play_button.config(
+            self.play_button.configure(
                 text="▶"
-            )
-
-            self.set_live_state(
-                "PAUSED"
             )
 
         elif state == "BUFFERING":
 
-            self.station_status.config(
-                text="● Buffering...",
+            self.live_label.configure(
+                text="●  BUFFERING",
                 fg=self.WARNING,
             )
 
-            self.set_live_state(
-                "BUFFERING"
+            self.play_button.configure(
+                text="Ⅱ"
             )
 
         elif state == "CONNECTING":
 
-            self.station_status.config(
-                text="● Connecting...",
+            self.live_label.configure(
+                text="●  CONNECTING",
                 fg=self.WARNING,
             )
 
-            self.set_live_state(
-                "CONNECTING"
+            self.play_button.configure(
+                text="Ⅱ"
             )
 
         elif state == "RECONNECTING":
 
-            self.station_status.config(
-                text="● Reconnecting...",
+            self.live_label.configure(
+                text="●  RECONNECTING",
                 fg=self.WARNING,
             )
 
-            self.set_live_state(
-                "RECONNECTING"
+            self.play_button.configure(
+                text="Ⅱ"
             )
 
         elif state == "STOPPED":
 
-            self.station_status.config(
-                text="● Stopped",
+            self.live_label.configure(
+                text="●  READY",
                 fg=self.TEXT_MUTED,
             )
 
-            self.play_button.config(
+            self.play_button.configure(
                 text="▶"
-            )
-
-            self.set_live_state(
-                "OFFLINE"
             )
 
         elif state == "ENDED":
 
-            self.station_status.config(
-                text="● Stream ended",
-                fg=self.WARNING,
+            self.live_label.configure(
+                text="●  ENDED",
+                fg=self.TEXT_MUTED,
             )
 
-            self.play_button.config(
+            self.play_button.configure(
                 text="▶"
-            )
-
-            self.set_live_state(
-                "OFFLINE"
             )
 
         elif state == "ERROR":
 
-            self.set_player_error(
-                "Stream connection error"
+            self.live_label.configure(
+                text="●  ERROR",
+                fg=self.ERROR,
+            )
+
+            self.play_button.configure(
+                text="▶"
             )
 
     # ========================================================
     # METADATA
     # ========================================================
 
-    def update_metadata(
-        self,
-        title,
-    ):
+    def player_metadata_changed(self, title):
 
         if not title:
-            return
-
-        title = str(title).strip()
-
-        if not title:
-            return
-
-        if title == self.last_title:
             return
 
         self.last_title = title
 
-        self.track_label.config(
-            text=f"♪  {title}"
+        self.now_title_label.configure(
+            text=title
         )
 
-        self.player_track.config(
+        self.bottom_title.configure(
             text=title
+        )
+
+    # ========================================================
+    # ERROR
+    # ========================================================
+
+    def player_error(self, message):
+
+        if self.closing:
+            return
+
+        self.live_label.configure(
+            text="●  ERROR",
+            fg=self.ERROR,
+        )
+
+        self.bottom_title.configure(
+            text="Playback error"
+        )
+
+        self.now_title_label.configure(
+            text=str(message)
+        )
+
+    # ========================================================
+    # WAVEFORM
+    # ========================================================
+
+    def animate_waveform(self):
+
+        if self.closing:
+            return
+
+        playing = self.player.get_state() in (
+            "PLAYING",
+            "BUFFERING",
+            "CONNECTING",
+        )
+
+        self.wave_phase += 0.22
+
+        for index, bar in enumerate(
+            self.wave_bars
+        ):
+
+            if playing:
+
+                value = (
+                    math.sin(
+                        self.wave_phase
+                        + index * 0.55
+                    )
+                    + 1
+                ) / 2
+
+                height = 5 + int(
+                    value * 25
+                )
+
+            else:
+
+                height = 4
+
+            center = 22
+
+            self.wave_canvas.coords(
+                bar,
+                4 + index * 11,
+                center - height,
+                9 + index * 11,
+                center + height,
+            )
+
+        self.wave_after_id = self.root.after(
+            70,
+            self.animate_waveform,
         )
 
     # ========================================================
@@ -2370,402 +2226,32 @@ class RadioApp:
 
             state = self.player.get_state()
 
-            # ------------------------------------------------
-            # Metadata fallback
-            # ------------------------------------------------
-
-            if state in (
-                "PLAYING",
-                "BUFFERING",
-                "CONNECTING",
-            ):
-
-                title = self.player.get_title()
-
-                if title:
-                    self.update_metadata(
-                        title
-                    )
-
-            # ------------------------------------------------
-            # Synchronize UI if callback missed
-            # ------------------------------------------------
-
             if state != self.last_state:
 
-                self.handle_player_state(
+                self.player_state_changed(
                     state
                 )
 
-        except Exception:
-            pass
-
-        if not self.closing:
-
-            try:
-
-                self.root.after(
-                    max(
-                        100,
-                        int(UI_UPDATE_INTERVAL),
-                    ),
-                    self.update_loop,
-                )
-
-            except Exception:
-                pass
-
-    # ========================================================
-    # LIVE STATUS
-    # ========================================================
-
-    def set_live_state(
-        self,
-        state,
-    ):
-
-        states = {
-
-            "LIVE": (
-                "●",
-                "LIVE",
-                self.SUCCESS,
-            ),
-
-            "CONNECTING": (
-                "●",
-                "CONNECTING",
-                self.WARNING,
-            ),
-
-            "BUFFERING": (
-                "●",
-                "BUFFERING",
-                self.WARNING,
-            ),
-
-            "RECONNECTING": (
-                "●",
-                "RECONNECTING",
-                self.WARNING,
-            ),
-
-            "PAUSED": (
-                "●",
-                "PAUSED",
-                self.TEXT_MUTED,
-            ),
-
-            "OFFLINE": (
-                "●",
-                "OFFLINE",
-                self.TEXT_MUTED,
-            ),
-
-            "ERROR": (
-                "●",
-                "ERROR",
-                self.ERROR,
-            ),
-        }
-
-        dot, text, color = states.get(
-            state,
-            states["OFFLINE"],
-        )
-
-        self.live_dot.config(
-            text=dot,
-            fg=color,
-        )
-
-        self.live_text.config(
-            text=text,
-            fg=color,
-        )
-
-    # ========================================================
-    # ERROR
-    # ========================================================
-
-    def set_player_error(
-        self,
-        message,
-    ):
-
-        if self.closing:
-            return
-
-        self.station_status.config(
-            text="● Connection error",
-            fg=self.ERROR,
-        )
-
-        self.track_label.config(
-            text="♪  Unable to play this station"
-        )
-
-        self.player_track.config(
-            text="Connection error"
-        )
-
-        self.play_button.config(
-            text="▶"
-        )
-
-        self.set_live_state(
-            "ERROR"
-        )
-
-    # ========================================================
-    # VOLUME
-    # ========================================================
-
-    def initialize_volume(self):
-
-        self.updating_volume = True
-
-        try:
-
-            self.volume_scale.set(
-                DEFAULT_VOLUME
+            station = (
+                self.player.get_current_station()
             )
 
-        finally:
-
-            self.updating_volume = False
-
-        try:
-
-            self.player.set_volume(
-                DEFAULT_VOLUME
-            )
+            if station:
+                self.current_station_name = station
 
         except Exception:
             pass
 
-        self.update_volume_label(
-            DEFAULT_VOLUME
+        self.update_after_id = self.root.after(
+            max(50, UI_UPDATE_INTERVAL),
+            self.update_loop,
         )
 
-    def volume_changed(
-        self,
-        value,
-    ):
-
-        if self.updating_volume:
-            return
-
-        try:
-
-            value = int(
-                float(value)
-            )
-
-            value = max(
-                0,
-                min(
-                    100,
-                    value,
-                ),
-            )
-
-            self.player.set_volume(
-                value
-            )
-
-            self.update_volume_label(
-                value
-            )
-
-        except Exception:
-            pass
-
-    def update_volume_label(
-        self,
-        value,
-    ):
-
-        value = int(value)
-
-        self.volume_label.config(
-            text=f"{value}%"
-        )
-
-    def change_volume(
-        self,
-        amount,
-    ):
-
-        try:
-
-            current = self.player.get_volume()
-
-            new_value = max(
-                0,
-                min(
-                    100,
-                    current + amount,
-                ),
-            )
-
-            self.updating_volume = True
-
-            try:
-
-                self.volume_scale.set(
-                    new_value
-                )
-
-            finally:
-
-                self.updating_volume = False
-
-            self.player.set_volume(
-                new_value
-            )
-
-            self.update_volume_label(
-                new_value
-            )
-
-        except Exception:
-            pass
-
     # ========================================================
-    # WAVEFORM
+    # CANVAS
     # ========================================================
 
-    def animate_waveform(self):
-
-        if self.closing:
-            return
-
-        try:
-
-            width = max(
-                1,
-                self.waveform.winfo_width()
-            )
-
-            height = max(
-                1,
-                self.waveform.winfo_height()
-            )
-
-            count = len(
-                self.wave_bars
-            )
-
-            spacing = width / count
-
-            active = self.last_state in (
-                "PLAYING",
-                "BUFFERING",
-                "CONNECTING",
-                "RECONNECTING",
-            )
-
-            for i, bar in enumerate(
-                self.wave_bars
-            ):
-
-                if active:
-
-                    wave = (
-                        math.sin(
-                            i * 0.55
-                            + self.wave_phase
-                        )
-                        + 1
-                    ) / 2
-
-                    random_part = random.uniform(
-                        0.45,
-                        1.0
-                    )
-
-                    bar_height = (
-                        6
-                        + wave
-                        * random_part
-                        * 32
-                    )
-
-                else:
-
-                    bar_height = 5
-
-                x1 = (
-                    i * spacing
-                    + 1
-                )
-
-                x2 = (
-                    (i + 1) * spacing
-                    - 1
-                )
-
-                y2 = height
-
-                y1 = max(
-                    2,
-                    height - bar_height,
-                )
-
-                self.waveform.coords(
-                    bar,
-                    x1,
-                    y1,
-                    x2,
-                    y2,
-                )
-
-                self.waveform.itemconfig(
-                    bar,
-                    fill=(
-                        self.ACCENT
-                        if active
-                        else self.SURFACE_3
-                    ),
-                )
-
-            self.wave_phase += 0.17
-
-        except Exception:
-            pass
-
-        if not self.closing:
-
-            self.root.after(
-                80,
-                self.animate_waveform,
-            )
-
-    # ========================================================
-    # SEARCH / VIEW HELPERS
-    # ========================================================
-
-    def get_station_category(
-        self,
-        station_name,
-    ):
-
-        for category, stations in STATIONS.items():
-
-            if station_name in stations:
-                return category
-
-        return "Internet Radio"
-
-    # ========================================================
-    # SCROLL
-    # ========================================================
-
-    def on_scroll_content_configure(
-        self,
-        event=None,
-    ):
+    def on_cards_configure(self, event=None):
 
         try:
 
@@ -2778,36 +2264,13 @@ class RadioApp:
         except Exception:
             pass
 
-    def on_canvas_configure(
-        self,
-        event=None,
-    ):
-
-        if not event:
-            return
+    def on_canvas_configure(self, event):
 
         try:
 
             self.canvas.itemconfigure(
                 self.canvas_window,
                 width=event.width,
-            )
-
-        except Exception:
-            pass
-
-    def on_mousewheel(
-        self,
-        event,
-    ):
-
-        try:
-
-            self.canvas.yview_scroll(
-                int(
-                    -event.delta / 120
-                ),
-                "units",
             )
 
         except Exception:
@@ -2821,124 +2284,51 @@ class RadioApp:
 
         self.root.bind(
             "<space>",
-            self._hotkey_play,
-        )
-
-        self.root.bind(
-            "<Escape>",
-            self._hotkey_stop,
-        )
-
-        self.root.bind(
-            "<Up>",
-            self._hotkey_volume_up,
-        )
-
-        self.root.bind(
-            "<Down>",
-            self._hotkey_volume_down,
-        )
-
-        self.root.bind(
-            "<Control-k>",
-            self._hotkey_search,
+            lambda event:
+            self.toggle_play()
         )
 
         self.root.bind(
             "<Control-f>",
-            self._hotkey_search,
+            lambda event:
+            self.focus_search()
         )
 
         self.root.bind(
-            "f",
-            self._hotkey_favorite,
+            "<Escape>",
+            lambda event:
+            self.clear_search()
         )
 
-    def _hotkey_play(
-        self,
-        event=None,
-    ):
-
-        # Не перехватываем Space при вводе текста.
-        if isinstance(
-            self.root.focus_get(),
-            tk.Entry,
-        ):
-            return
-
-        self.toggle_play()
-
-    def _hotkey_stop(
-        self,
-        event=None,
-    ):
-
-        self.stop()
-
-    def _hotkey_volume_up(
-        self,
-        event=None,
-    ):
-
-        self.change_volume(
-            5
+        self.root.bind(
+            "<Left>",
+            lambda event:
+            self.previous_station()
         )
 
-    def _hotkey_volume_down(
-        self,
-        event=None,
-    ):
-
-        self.change_volume(
-            -5
+        self.root.bind(
+            "<Right>",
+            lambda event:
+            self.next_station()
         )
 
-    def _hotkey_search(
-        self,
-        event=None,
-    ):
+    def focus_search(self):
 
         self.search_entry.focus_set()
 
         self.search_entry.select_range(
             0,
-            "end",
+            tk.END,
         )
 
-    def _hotkey_favorite(
-        self,
-        event=None,
-    ):
+    def clear_search(self):
 
-        if isinstance(
-            self.root.focus_get(),
-            tk.Entry,
-        ):
-            return
+        self.search_entry.delete(
+            0,
+            tk.END,
+        )
 
-        self.toggle_favorite()
-
-    # ========================================================
-    # SAFE TK CALLBACK
-    # ========================================================
-
-    def safe_after(
-        self,
-        callback,
-    ):
-
-        if self.closing:
-            return
-
-        try:
-
-            self.root.after(
-                0,
-                callback,
-            )
-
-        except Exception:
-            pass
+        self.render_home()
 
     # ========================================================
     # CLOSE
@@ -2951,24 +2341,36 @@ class RadioApp:
 
         self.closing = True
 
-        # Cancel pending callbacks
-        for after_id in self.ui_after_ids:
+        if self.search_after_id:
 
             try:
                 self.root.after_cancel(
-                    after_id
+                    self.search_after_id
                 )
             except Exception:
                 pass
 
-        # Player cleanup
+        if self.update_after_id:
+
+            try:
+                self.root.after_cancel(
+                    self.update_after_id
+                )
+            except Exception:
+                pass
+
+        if self.wave_after_id:
+
+            try:
+                self.root.after_cancel(
+                    self.wave_after_id
+                )
+            except Exception:
+                pass
+
         try:
             self.player.destroy()
         except Exception:
             pass
 
-        # Tk cleanup
-        try:
-            self.root.destroy()
-        except Exception:
-            pass
+        self.root.destroy()

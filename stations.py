@@ -18,7 +18,6 @@ STATIONS = {
     "РЕЛАКС И ЧИЛЛАУТ": {
         "Relax FM": "https://stream.laut.fm/relax-fm",
         "Record Chillout": "https://radiorecord.hostingradio.ru/chil96.aacp",
-        "Lo-Fi": "https://radiorecord.hostingradio.ru/lofi96.aacp",
     },
 
     "ТАНЦЕВАЛЬНАЯ": {
@@ -40,6 +39,7 @@ STATIONS = {
 
     "Lofi Girl 24/7": {
         "Hip hop": "https://www.youtube.com/watch?v=rFZHOHl-L8A",
+        "Lo-Fi": "https://radiorecord.hostingradio.ru/lofi96.aacp",
     },
 }
 
