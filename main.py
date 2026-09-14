@@ -1,16 +1,10 @@
 import tkinter as tk
-
-from ui.app import RadioApp
+from ui.app_3d import RadioApp3D
 
 
 def main():
-
     root = tk.Tk()
-
-    app = RadioApp(
-        root
-    )
-
+    app = RadioApp3D(root)
     root.mainloop()
 
 
