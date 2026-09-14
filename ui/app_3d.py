@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk
+import math
 
 # Импорты из корневой папки проекта
 from config import (
@@ -11,17 +12,24 @@ from stations import STATIONS, search_stations
 from player import RadioPlayer
 
 
-class RadioApp:
+class RadioApp3D:
     def __init__(self, root):
         self.root = root
         
+        # Параметры 3D эффекта
+        self.tilt_x = 0.0
+        self.tilt_y = 0.0
+        self.target_x = 0.0
+        self.target_y = 0.0
+        self.sensitivity = 25  # Чувствительность к мыши
+        
         # --------------------------------------------------------
-        # WINDOW
+        # WINDOW SETUP
         # --------------------------------------------------------
-        self.root.title(f"{APP_NAME} {APP_VERSION}")
+        self.root.title(f"{APP_NAME} {APP_VERSION} [3D]")
         self.root.geometry(f"{WINDOW_WIDTH}x{WINDOW_HEIGHT}")
         self.root.minsize(MIN_WIDTH, MIN_HEIGHT)
-        self.root.configure(bg=BG)
+        self.root.configure(bg="#000000")
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
 
         # --------------------------------------------------------
@@ -44,232 +52,258 @@ class RadioApp:
         )
 
         # --------------------------------------------------------
-        # UI
+        # 3D SCENE CANVAS
+        # --------------------------------------------------------
+        # Используем Canvas как "сцену" для перемещения интерфейса
+        self.scene = tk.Canvas(self.root, bg="#000000", highlightthickness=0)
+        self.scene.pack(fill="both", expand=True)
+        
+        # Контейнер всего UI
+        self.ui_frame = tk.Frame(self.scene, bg=BG)
+        
+        # Создаем окно на канвасе. ВАЖНО: начальные координаты точно в центре
+        self.center_x = WINDOW_WIDTH // 2
+        self.center_y = WINDOW_HEIGHT // 2
+        
+        self.window_id = self.scene.create_window(
+            self.center_x, 
+            self.center_y, 
+            window=self.ui_frame, 
+            anchor="center"
+        )
+
+        # Отслеживание мыши для параллакса
+        self.root.bind("<Motion>", self._on_mouse_move)
+        
+        # --------------------------------------------------------
+        # BUILD INTERFACE
         # --------------------------------------------------------
         self.setup_styles()
-        self.setup_ui()
+        self.build_ui()
         self.setup_hotkeys()
 
-        # --------------------------------------------------------
-        # INITIAL VOLUME
-        # --------------------------------------------------------
+        # Init volume & stations
         self.updating_volume = True
-        try:
-            self.volume_scale.set(DEFAULT_VOLUME)
-        finally:
-            self.updating_volume = False
+        try: self.volume_scale.set(DEFAULT_VOLUME)
+        finally: self.updating_volume = False
+        
         self.player.set_volume(DEFAULT_VOLUME)
         self.update_volume_icon(DEFAULT_VOLUME)
-
-        # --------------------------------------------------------
-        # POPULATE STATIONS (ИСПРАВЛЕНИЕ: заполняем список при старте)
-        # --------------------------------------------------------
         self.populate_stations()
-
-        # --------------------------------------------------------
-        # UPDATE LOOP
-        # --------------------------------------------------------
+        
+        # Запуск циклов
+        self.animate_loop()
         self.update_loop()
 
     # ============================================================
-    # STYLES
+    # 3D ANIMATION LOGIC (FIXED)
+    # ============================================================
+    def _on_mouse_move(self, event):
+        # Нормализуем координаты мыши от -1 до 1 относительно центра
+        cx = self.root.winfo_width() / 2
+        cy = self.root.winfo_height() / 2
+        
+        # Если окно еще не отрисовано, пропускаем
+        if cx == 0 or cy == 0: return
+            
+        mx = (event.x - cx) / cx
+        my = (event.y - cy) / cy
+        
+        # Целевая позиция смещения
+        self.target_x = mx * self.sensitivity
+        self.target_y = my * self.sensitivity
+
+    def animate_loop(self):
+        if self.closing: return
+        
+        # Плавная интерполяция (Lerp) для мягкости движения
+        self.tilt_x += (self.target_x - self.tilt_x) * 0.08
+        self.tilt_y += (self.target_y - self.tilt_y) * 0.08
+        
+        # Безопасное перемещение окна на канвасе
+        # Мы просто двигаем центр окна от исходной точки
+        new_x = self.center_x + self.tilt_x
+        new_y = self.center_y + self.tilt_y
+        
+        # Ограничиваем, чтобы не улетело слишком далеко (опционально)
+        # Но для эффекта "улетания" можно оставить свободным
+        
+        self.scene.coords(self.window_id, new_x, new_y)
+        
+        # Легкий поворот через scale (только по осям, без изменения размера контента)
+        # Это создает эффект перспективы без ломания верстки
+        # scale_x = 1.0 + (self.tilt_y * 0.002)
+        # scale_y = 1.0 + (self.tilt_x * 0.002)
+        # self.scene.scale(self.window_id, new_x, new_y, scale_x, scale_y)
+        
+        self.root.after(16, self.animate_loop) # ~60 FPS
+
+    # ============================================================
+    # UI CONSTRUCTION
     # ============================================================
     def setup_styles(self):
         style = ttk.Style()
-        try:
-            style.theme_use("clam")
-        except Exception:
-            pass
+        style.theme_use("clam")
+        style.configure("Modern.TButton", background=ACCENT, foreground="white", borderwidth=0, padding=(20, 12), font=("Segoe UI", 11, "bold"))
+        style.map("Modern.TButton", background=[("active", ACCENT_HOVER)])
+        style.configure("Secondary.TButton", background=PANEL_LIGHT, foreground=TEXT, borderwidth=0, padding=(15, 12), font=("Segoe UI", 10))
 
-        style.configure(
-            "Modern.TButton", background=ACCENT, foreground="white",
-            borderwidth=0, padding=(18, 10), font=("Segoe UI", 10, "bold"),
-        )
-        style.map("Modern.TButton", background=[("active", ACCENT_HOVER), ("pressed", ACCENT_HOVER)])
-
-        style.configure(
-            "Secondary.TButton", background=PANEL_LIGHT, foreground=TEXT,
-            borderwidth=0, padding=(15, 10), font=("Segoe UI", 10),
-        )
-        style.map("Secondary.TButton", background=[("active", PANEL_HOVER), ("pressed", PANEL_HOVER)])
-
-    # ============================================================
-    # UI SETUP
-    # ============================================================
-    def setup_ui(self):
+    def build_ui(self):
         # HEADER
-        header = tk.Frame(self.root, bg=BG)
-        header.pack(fill="x", padx=28, pady=(22, 14))
+        header = tk.Frame(self.ui_frame, bg=BG)
+        header.pack(fill="x", padx=40, pady=(30, 20))
         
-        tk.Label(header, text="", bg=BG, fg=TEXT, font=("Segoe UI Emoji", 30)).pack(side="left", padx=(0, 12))
-        
+        tk.Label(header, text="📻", bg=BG, fg=ACCENT, font=("Segoe UI Emoji", 40)).pack(side="left", padx=(0, 15))
         title_box = tk.Frame(header, bg=BG)
         title_box.pack(side="left")
-        tk.Label(title_box, text=APP_NAME, bg=BG, fg=TEXT, font=("Segoe UI", 22, "bold")).pack(anchor="w")
-        tk.Label(title_box, text="Internet radio player", bg=BG, fg=TEXT_MUTED, font=("Segoe UI", 9)).pack(anchor="w")
+        tk.Label(title_box, text=APP_NAME, bg=BG, fg="white", font=("Segoe UI", 28, "bold")).pack(anchor="w")
+        tk.Label(title_box, text="Immersive 3D Experience", bg=BG, fg=TEXT_MUTED, font=("Segoe UI", 10)).pack(anchor="w")
 
-        # MAIN CONTAINER
-        main = tk.Frame(self.root, bg=BG)
-        main.pack(fill="both", expand=True, padx=28, pady=5)
+        # MAIN LAYOUT
+        main = tk.Frame(self.ui_frame, bg=BG)
+        main.pack(fill="both", expand=True, padx=40, pady=10)
 
-        # LEFT PANEL (STATIONS GRID)
-        left = tk.Frame(main, bg=PANEL, width=360)
-        left.pack(side="left", fill="y", padx=(0, 12))
+        # LEFT PANEL
+        left = tk.Frame(main, bg=PANEL, width=400)
+        left.pack(side="left", fill="y", padx=(0, 20))
         left.pack_propagate(False)
+        
+        tk.Label(left, text="КАТЕГОРИИ", bg=PANEL, fg=ACCENT, font=("Segoe UI", 12, "bold")).pack(anchor="w", padx=25, pady=(25, 15))
 
-        tk.Label(left, text="РАДИОСТАНЦИИ", bg=PANEL, fg=TEXT, font=("Segoe UI", 10, "bold")).pack(
-            anchor="w", padx=18, pady=(18, 10)
-        )
-
-        # SEARCH BAR
-        search_box = tk.Frame(left, bg=PANEL_LIGHT)
-        search_box.pack(fill="x", padx=14, pady=(0, 12))
-
+        # SEARCH
+        search_box = tk.Frame(left, bg="#1a1b26")
+        search_box.pack(fill="x", padx=20, pady=(0, 20))
         self.search_var = tk.StringVar()
-        self.search_entry = tk.Entry(
-            search_box, textvariable=self.search_var, bg=PANEL_LIGHT, fg=TEXT,
-            insertbackground=TEXT, relief="flat", borderwidth=0, font=("Segoe UI", 10),
-        )
-        self.search_entry.pack(fill="x", padx=10, pady=9)
+        self.search_entry = tk.Entry(search_box, textvariable=self.search_var, bg="#1a1b26", fg=TEXT, insertbackground=TEXT, relief="flat", borderwidth=0, font=("Segoe UI", 11))
+        self.search_entry.pack(fill="x", padx=15, pady=12)
         self.search_entry.bind("<KeyRelease>", self.on_search)
 
-        # SCROLLABLE CANVAS FOR STATIONS
+        # GRID CONTAINER
         list_frame = tk.Frame(left, bg=PANEL)
-        list_frame.pack(fill="both", expand=True, padx=10, pady=(0, 12))
-
-        scrollbar = tk.Scrollbar(list_frame, bg=PANEL_LIGHT, troughcolor=PANEL, activebackground=ACCENT, relief="flat", borderwidth=0)
+        list_frame.pack(fill="both", expand=True, padx=15, pady=(0, 20))
+        
+        scrollbar = tk.Scrollbar(list_frame, bg=PANEL, troughcolor=PANEL, activebackground=ACCENT, relief="flat", borderwidth=0, width=10)
         scrollbar.pack(side="right", fill="y")
-
+        
         self.station_canvas = tk.Canvas(list_frame, bg=PANEL, highlightthickness=0, yscrollcommand=scrollbar.set)
         self.station_canvas.pack(side="left", fill="both", expand=True)
         scrollbar.config(command=self.station_canvas.yview)
-
+        
         self.station_grid_container = tk.Frame(self.station_canvas, bg=PANEL)
         self.station_canvas.create_window((0, 0), window=self.station_grid_container, anchor="nw")
-        
         self.station_grid_container.bind("<Configure>", lambda e: self.station_canvas.configure(scrollregion=self.station_canvas.bbox("all")))
-        self.station_canvas.bind_all("<MouseWheel>", lambda e: self.station_canvas.yview_scroll(int(-1 * (e.delta / 120)), "units"))
+        self.station_canvas.bind_all("<MouseWheel>", lambda e: self.station_canvas.yview_scroll(int(-1*(e.delta/120)), "units"))
 
         # RIGHT PANEL
         right = tk.Frame(main, bg=BG)
         right.pack(side="left", fill="both", expand=True)
 
-        # CURRENT STATION CARD
-        station_card = tk.Frame(right, bg=PANEL, height=180)
-        station_card.pack(fill="x", pady=(0, 12))
+        # INFO CARD
+        station_card = tk.Frame(right, bg=PANEL, height=200)
+        station_card.pack(fill="x", pady=(0, 20))
         station_card.pack_propagate(False)
-
-        self.cover = tk.Canvas(station_card, width=130, height=130, bg=PANEL_LIGHT, highlightthickness=0)
-        self.cover.pack(side="left", padx=22, pady=22)
-        self.cover.create_text(65, 65, text="♪", fill=ACCENT, font=("Segoe UI", 48, "bold"))
-
+        
+        self.cover = tk.Canvas(station_card, width=150, height=150, bg="#1a1b26", highlightthickness=0)
+        self.cover.pack(side="left", padx=30, pady=25)
+        self.cover.create_text(75, 75, text="♪", fill=ACCENT, font=("Segoe UI", 60, "bold"))
+        
         info = tk.Frame(station_card, bg=PANEL)
-        info.pack(side="left", fill="both", expand=True, padx=(0, 20))
-
-        self.station_title = tk.Label(info, text="Выберите станцию", bg=PANEL, fg=TEXT, font=("Segoe UI", 18, "bold"), wraplength=500, justify="left")
-        self.station_title.pack(anchor="w", pady=(30, 6))
-
-        self.status = tk.Label(info, text="● Готов к воспроизведению", bg=PANEL, fg=TEXT_MUTED, font=("Segoe UI", 10))
+        info.pack(side="left", fill="both", expand=True, padx=(0, 30))
+        
+        self.station_title = tk.Label(info, text="Выберите станцию", bg=PANEL, fg="white", font=("Segoe UI", 24, "bold"), wraplength=500, justify="left")
+        self.station_title.pack(anchor="w", pady=(35, 8))
+        
+        self.status = tk.Label(info, text="● Готов к работе", bg=PANEL, fg=TEXT_MUTED, font=("Segoe UI", 11))
         self.status.pack(anchor="w")
+        
+        self.track = tk.Label(info, text="", bg=PANEL, fg=ACCENT, font=("Segoe UI", 10, "italic"))
+        self.track.pack(anchor="w", pady=(15, 0))
 
-        self.track = tk.Label(info, text="", bg=PANEL, fg=TEXT_MUTED, font=("Segoe UI", 9))
-        self.track.pack(anchor="w", pady=(12, 0))
-
-        # CONTROLS
+        # CONTROLS BAR
         controls = tk.Frame(right, bg=PANEL_LIGHT)
         controls.pack(fill="x")
-
-        button_box = tk.Frame(controls, bg=PANEL_LIGHT)
-        button_box.pack(side="left", padx=15, pady=12)
-
-        self.play_button = ttk.Button(button_box, text="▶ PLAY", style="Modern.TButton", command=self.toggle_play)
-        self.play_button.pack(side="left", padx=4)
-
-        self.stop_button = ttk.Button(button_box, text="■ STOP", style="Secondary.TButton", command=self.stop)
-        self.stop_button.pack(side="left", padx=4)
-
-        volume_box = tk.Frame(controls, bg=PANEL_LIGHT)
-        volume_box.pack(side="right", padx=18)
-
-        self.volume_icon = tk.Label(volume_box, text="", bg=PANEL_LIGHT, fg=TEXT, font=("Segoe UI Emoji", 12))
-        self.volume_icon.pack(side="left", padx=(0, 6))
-
-        # ИСПРАВЛЕНИЕ: Стилизация ползунка под темную тему
-        self.volume_scale = tk.Scale(
-            volume_box, from_=0, to=100, orient="horizontal", length=140, showvalue=False,
-            bg=PANEL_LIGHT, fg=TEXT, troughcolor="#303540", activebackground=ACCENT,
-            highlightthickness=0, borderwidth=0, relief="flat", sliderrelief="flat",
-            sliderlength=18, width=10, command=self.volume_changed,
-        )
+        
+        btn_box = tk.Frame(controls, bg=PANEL_LIGHT)
+        btn_box.pack(side="left", padx=20, pady=15)
+        
+        self.play_button = ttk.Button(btn_box, text="▶ PLAY", style="Modern.TButton", command=self.toggle_play)
+        self.play_button.pack(side="left", padx=5)
+        
+        self.stop_button = ttk.Button(btn_box, text="■ STOP", style="Secondary.TButton", command=self.stop)
+        self.stop_button.pack(side="left", padx=5)
+        
+        vol_box = tk.Frame(controls, bg=PANEL_LIGHT)
+        vol_box.pack(side="right", padx=25)
+        
+        self.volume_icon = tk.Label(vol_box, text="", bg=PANEL_LIGHT, fg=TEXT, font=("Segoe UI Emoji", 14))
+        self.volume_icon.pack(side="left", padx=(0, 10))
+        
+        self.volume_scale = tk.Scale(vol_box, from_=0, to=100, orient="horizontal", length=150, showvalue=False, bg=PANEL_LIGHT, fg=TEXT, troughcolor="#2a2b3d", activebackground=ACCENT, highlightthickness=0, borderwidth=0, relief="flat", sliderrelief="flat", sliderlength=20, width=12, command=self.volume_changed)
         self.volume_scale.pack(side="left")
 
         # FOOTER
-        footer = tk.Frame(self.root, bg=PANEL_LIGHT, height=28)
+        footer = tk.Frame(self.ui_frame, bg="#0a0a0f", height=35)
         footer.pack(fill="x", side="bottom")
         footer.pack_propagate(False)
+        self.footer_status = tk.Label(footer, text="● OFFLINE", bg="#0a0a0f", fg=TEXT_MUTED, font=("Segoe UI", 9))
+        self.footer_status.pack(side="left", padx=20, pady=8)
+        tk.Label(footer, text=f"{APP_NAME} {APP_VERSION}", bg="#0a0a0f", fg=TEXT_MUTED, font=("Segoe UI", 9)).pack(side="right", padx=20)
 
-        self.footer_status = tk.Label(footer, text="● OFFLINE", bg=PANEL_LIGHT, fg=TEXT_MUTED, font=("Segoe UI", 8))
-        self.footer_status.pack(side="left", padx=15, pady=5)
-
-        tk.Label(footer, text=f"{APP_NAME} {APP_VERSION}", bg=PANEL_LIGHT, fg=TEXT_MUTED, font=("Segoe UI", 8)).pack(side="right", padx=15)
-
-    # ============================================================
-    # HOTKEYS
-    # ============================================================
     def setup_hotkeys(self):
-        self.root.bind("<space>", lambda event: self.toggle_play())
-        self.root.bind("<Escape>", lambda event: self.stop())
-        self.root.bind("<Up>", lambda event: self.change_volume(5))
-        self.root.bind("<Down>", lambda event: self.change_volume(-5))
+        self.root.bind("<space>", lambda e: self.toggle_play())
+        self.root.bind("<Escape>", lambda e: self.stop())
 
     # ============================================================
-    # STATION GRID LOGIC
+    # STATION LOGIC
     # ============================================================
     def populate_stations(self):
-        for widget in self.station_grid_container.winfo_children():
-            widget.destroy()
+        for w in self.station_grid_container.winfo_children(): w.destroy()
         self.station_tiles.clear()
-
-        col = 0
-        row = 0
-        cols = 2
-
-        for station_name in self.filtered_stations:
-            tile = self._create_station_tile(station_name)
-            tile.grid(row=row, column=col, padx=4, pady=4, sticky="nsew")
+        
+        col, row, cols = 0, 0, 2
+        for name in self.filtered_stations:
+            tile = self._create_3d_tile(name)
+            tile.grid(row=row, column=col, padx=6, pady=6, sticky="nsew")
             self.station_grid_container.columnconfigure(col, weight=1)
-            
             col += 1
-            if col >= cols:
-                col = 0
-                row += 1
+            if col >= cols: col, row = 0, row + 1
 
-    def _create_station_tile(self, name):
-        frame = tk.Frame(self.station_grid_container, bg=PANEL_LIGHT, cursor="hand2")
+    def _create_3d_tile(self, name):
+        frame = tk.Frame(self.station_grid_container, bg=PANEL_LIGHT, cursor="hand2", bd=0)
         
-        icon = tk.Label(frame, text="📻", bg=PANEL_LIGHT, fg=ACCENT, font=("Segoe UI Emoji", 16))
-        icon.pack(side="left", padx=(10, 8), pady=10)
+        # 3D Shadow effect
+        shadow = tk.Frame(frame, bg="#000000", height=4)
+        shadow.pack(side="bottom", fill="x")
         
-        label = tk.Label(frame, text=name, bg=PANEL_LIGHT, fg=TEXT, font=("Segoe UI", 9, "bold"), anchor="w", wraplength=130)
-        label.pack(side="left", fill="x", expand=True, padx=(0, 10), pady=10)
+        content = tk.Frame(frame, bg=PANEL_LIGHT)
+        content.pack(fill="both", expand=True, padx=12, pady=12)
         
-        frame.bind("<Enter>", lambda e, f=frame: f.configure(bg=PANEL_HOVER))
-        frame.bind("<Leave>", lambda e, f=frame, n=name: self._reset_tile(f, n))
+        icon = tk.Label(content, text="📻", bg=PANEL_LIGHT, fg=ACCENT, font=("Segoe UI Emoji", 18))
+        icon.pack(side="left", padx=(0, 10))
+        
+        label = tk.Label(content, text=name, bg=PANEL_LIGHT, fg="white", font=("Segoe UI", 9, "bold"), anchor="w", wraplength=140)
+        label.pack(side="left", fill="x", expand=True)
+        
+        def enter(e):
+            frame.configure(bg=ACCENT); content.configure(bg=ACCENT)
+            icon.configure(bg=ACCENT, fg="white"); label.configure(bg=ACCENT, fg="white")
+            
+        def leave(e):
+            if self.current_station != name:
+                frame.configure(bg=PANEL_LIGHT); content.configure(bg=PANEL_LIGHT)
+                icon.configure(bg=PANEL_LIGHT, fg=ACCENT); label.configure(bg=PANEL_LIGHT, fg="white")
+                
+        frame.bind("<Enter>", enter)
+        frame.bind("<Leave>", leave)
         frame.bind("<Button-1>", lambda e, n=name: self._select_station(n))
         
-        self.station_tiles[name] = {"frame": frame, "icon": icon, "label": label}
+        self.station_tiles[name] = {"frame": frame, "content": content, "icon": icon, "label": label}
         return frame
-
-    def _reset_tile(self, frame, name):
-        if self.current_station != name:
-            frame.configure(bg=PANEL_LIGHT)
 
     def _select_station(self, name):
         self.current_station = name
         url = STATIONS.get(name)
-        if not url:
-            self.player_error("URL станции не найден")
-            return
+        if not url: return self.player_error("URL не найден")
             
         self.current_url = url
         self.station_title.config(text=name)
@@ -278,173 +312,88 @@ class RadioApp:
         self.footer_status.config(text="● CONNECTING", fg=WARNING)
         self.play_button.config(text="⏸ PAUSE")
         
-        for s_name, widgets in self.station_tiles.items():
+        for s_name, w in self.station_tiles.items():
             is_active = (s_name == name)
-            bg_color = ACCENT if is_active else PANEL_LIGHT
-            fg_color = "white" if is_active else ACCENT
-            text_color = "white" if is_active else TEXT
+            bg = ACCENT if is_active else PANEL_LIGHT
+            fg = "white" if is_active else ACCENT
             
-            widgets["frame"].configure(bg=bg_color)
-            widgets["icon"].configure(fg=fg_color)
-            widgets["label"].configure(fg=text_color)
+            w["frame"].configure(bg=bg); w["content"].configure(bg=bg)
+            w["icon"].configure(bg=bg, fg=fg); w["label"].configure(bg=bg, fg="white")
 
-        try:
-            self.player.play(name, url)
-        except Exception as exc:
-            self.player_error(str(exc))
+        try: self.player.play(name, url)
+        except Exception as exc: self.player_error(str(exc))
 
-    # ============================================================
-    # SEARCH & PLAYBACK
-    # ============================================================
-    def on_search(self, event=None):
-        query = self.search_var.get()
-        self.filtered_stations = search_stations(query)
+    def on_search(self, e=None):
+        self.filtered_stations = search_stations(self.search_var.get())
         self.populate_stations()
 
     def toggle_play(self):
         if not self.current_station:
-            if self.filtered_stations:
-                self._select_station(self.filtered_stations[0])
+            if self.filtered_stations: self._select_station(self.filtered_stations[0])
             return
-
         state = self.player.get_state()
-        if state == "PLAYING":
-            self.player.pause()
-        elif state == "PAUSED":
-            self.player.resume()
+        if state == "PLAYING": self.player.pause()
+        elif state == "PAUSED": self.player.resume()
         elif state in ("STOPPED", "ERROR", "ENDED"):
-            if self.current_url:
-                self.set_status("● Подключение...", WARNING)
-                self.player.play(self.current_station, self.current_url)
-            else:
-                self.player.resume()
+            if self.current_url: self.player.play(self.current_station, self.current_url)
 
     def stop(self):
-        try:
-            self.player.stop()
-        except Exception:
-            pass
+        try: self.player.stop()
+        except: pass
         self.play_button.config(text="▶ PLAY")
         self.set_status("● Остановлено", TEXT_MUTED)
         self.footer_status.config(text="● OFFLINE", fg=TEXT_MUTED)
-        self.track.config(text="")
 
-    # ============================================================
-    # PLAYER EVENTS
-    # ============================================================
     def player_state_changed(self, state):
-        if self.closing:
-            return
-        try:
-            states_map = {
-                "CONNECTING": ("● Подключение...", WARNING, "● CONNECTING", WARNING, "⏸ PAUSE"),
-                "PLAYING": ("● Сейчас играет", SUCCESS, "● LIVE", SUCCESS, "⏸ PAUSE"),
-                "PAUSED": ("● Пауза", TEXT_MUTED, "● PAUSED", TEXT_MUTED, "▶ RESUME"),
-                "STOPPED": ("● Остановлено", TEXT_MUTED, "● OFFLINE", TEXT_MUTED, "▶ PLAY"),
-                "ERROR": ("● Ошибка", ERROR, "● ERROR", ERROR, "▶ PLAY"),
-                "ENDED": ("● Поток завершён", TEXT_MUTED, "● OFFLINE", TEXT_MUTED, "▶ PLAY"),
-            }
-            if state in states_map:
-                status_txt, status_clr, footer_txt, footer_clr, btn_txt = states_map[state]
-                self.set_status(status_txt, status_clr)
-                self.footer_status.config(text=footer_txt, fg=footer_clr)
-                self.play_button.config(text=btn_txt)
-        except tk.TclError:
-            pass
+        if self.closing: return
+        map = {
+            "PLAYING": ("● Сейчас играет", SUCCESS, "● LIVE", SUCCESS, "⏸ PAUSE"),
+            "PAUSED": ("● Пауза", TEXT_MUTED, "● PAUSED", TEXT_MUTED, "▶ RESUME"),
+            "ERROR": ("● Ошибка", ERROR, "● ERROR", ERROR, "▶ PLAY"),
+            "STOPPED": ("● Остановлено", TEXT_MUTED, "● OFFLINE", TEXT_MUTED, "▶ PLAY"),
+        }
+        if state in map:
+            t, c, ft, fc, bt = map[state]
+            self.set_status(t, c)
+            self.footer_status.config(text=ft, fg=fc)
+            self.play_button.config(text=bt)
 
     def player_error(self, text):
-        if self.closing:
-            return
-        self.set_status("● Ошибка подключения", ERROR)
-        try:
-            self.footer_status.config(text="● ERROR", fg=ERROR)
-            self.play_button.config(text="▶ PLAY")
-        except tk.TclError:
-            pass
+        self.set_status("● Ошибка", ERROR)
+        self.footer_status.config(text="● ERROR", fg=ERROR)
 
     def set_status(self, text, color):
-        try:
-            self.status.config(text=text, fg=color)
-        except tk.TclError:
-            pass
+        try: self.status.config(text=text, fg=color)
+        except: pass
 
-    # ============================================================
-    # VOLUME
-    # ============================================================
-    def volume_changed(self, value):
-        if self.updating_volume:
-            return
-        try:
-            value = int(float(value))
-            value = max(0, min(100, value))
-            self.player.set_volume(value)
-            self.update_volume_icon(value)
-        except (ValueError, TypeError, tk.TclError):
-            pass
+    def volume_changed(self, val):
+        if self.updating_volume: return
+        val = max(0, min(100, int(float(val))))
+        self.player.set_volume(val)
+        self.update_volume_icon(val)
 
-    def change_volume(self, amount):
-        try:
-            current = self.player.get_volume()
-            value = max(0, min(100, current + amount))
-            self.player.set_volume(value)
-            self.updating_volume = True
-            try:
-                self.volume_scale.set(value)
-            finally:
-                self.updating_volume = False
-            self.update_volume_icon(value)
-        except (ValueError, TypeError, tk.TclError):
-            pass
+    def update_volume_icon(self, val):
+        icons = {0: "🔇", 40: "", 75: ""}
+        icon = ""
+        for th, i in sorted(icons.items()):
+            if val >= th and i: icon = i
+        try: self.volume_icon.config(text=icon)
+        except: pass
 
-    def update_volume_icon(self, value):
-        try:
-            value = int(value)
-            icons = {0: "🔇", 1: "", 40: "", 75: "🔊"}
-            icon = "🔊"
-            for threshold, i in sorted(icons.items()):
-                if value >= threshold and i:
-                    icon = i
-            self.volume_icon.config(text=icon)
-        except (ValueError, TypeError, tk.TclError):
-            pass
-
-    # ============================================================
-    # UPDATE LOOP
-    # ============================================================
     def update_loop(self):
-        if self.closing:
-            return
+        if self.closing: return
         try:
-            state = self.player.get_state()
-            if state == "PLAYING":
+            if self.player.get_state() == "PLAYING":
                 self.footer_status.config(text="● LIVE", fg=SUCCESS)
-            
             title = self.player.get_title()
-            if title:
-                self.track.config(text=f"♪ {title}")
-                
-        except tk.TclError:
-            return
-        except Exception:
-            pass
+            if title: self.track.config(text=f"♪ {title}")
+        except: pass
+        try: self.root.after(UI_UPDATE_INTERVAL, self.update_loop)
+        except: pass
 
-        try:
-            self.root.after(UI_UPDATE_INTERVAL, self.update_loop)
-        except tk.TclError:
-            pass
-
-    # ============================================================
-    # CLOSE
-    # ============================================================
     def on_closing(self):
-        if self.closing:
-            return
         self.closing = True
-        try:
-            self.player.destroy()
-        except Exception:
-            pass
-        try:
-            self.root.destroy()
-        except Exception:
-            pass
+        try: self.player.destroy()
+        except: pass
+        try: self.root.destroy()
+        except: pass
