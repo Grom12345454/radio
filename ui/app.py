@@ -1,5 +1,9 @@
+import sys
+import os
 import tkinter as tk
 from tkinter import ttk
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config import (
     APP_NAME,
